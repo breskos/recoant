@@ -34,6 +34,10 @@ Requires Go 1.24 or newer.
 | [`sparse`](sparse) | Sparse matrices (CSR) for algorithms |
 | [`algo/popularity`](algo/popularity) | Popularity and trending, online |
 | [`algo/knn`](algo/knn) | Item-kNN and user-kNN, incremental refresh; similar items and user-to-user |
+| [`algo/svd`](algo/svd) | PureSVD and PCA with a randomized truncated SVD |
+| [`algo/mf`](algo/mf) | Funk-SVD, biased MF and SVD++ for ratings (Netflix Prize style) |
+| [`algo/als`](algo/als) | Alternating least squares for implicit feedback |
+| [`algo/bpr`](algo/bpr) | Bayesian personalized ranking |
 | [`evaluation`](evaluation) | Precision, recall, NDCG, MAP, hit rate, MRR, coverage; temporal and leave-last-out splits |
 | [`persist`](persist) | Save and load in JSON or binary |
 

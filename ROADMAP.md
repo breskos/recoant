@@ -11,8 +11,8 @@ Until v1.0.0 minor versions may change the API; every breaking change is listed 
 | Version | Theme | Status |
 | --- | --- | --- |
 | v0.1.0 | Core data model and baselines | done (merged) |
-| v0.2.0 | Neighborhood models and user-to-user | in progress |
-| v0.3.0 | Latent factors: SVD/PCA, MF, SVD++, ALS, BPR | planned |
+| v0.2.0 | Neighborhood models and user-to-user | done (merged) |
+| v0.3.0 | Latent factors: SVD/PCA, MF, SVD++, ALS, BPR | in progress |
 | v0.4.0 | Streaming: online and incremental learning | planned |
 | v0.5.0 | Signal relevance and funnels | planned |
 | v0.6.0 | Relations and graph algorithms | planned |
@@ -49,6 +49,7 @@ Until v1.0.0 minor versions may change the API; every breaking change is listed 
 
 - Stream pipeline: ingest, sessionization, windows, decay
 - Online updates for popularity, kNN, SGD-based MF and BPR; incremental updates for ALS
+- Aggregation modes in the store (sum, last, max) so that a re-rating replaces the old rating
 - Prequential evaluation and drift detection
 - Session-based recommendations
 
