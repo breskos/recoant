@@ -10,8 +10,8 @@ Until v1.0.0 minor versions may change the API; every breaking change is listed 
 
 | Version | Theme | Status |
 | --- | --- | --- |
-| v0.1.0 | Core data model and baselines | in progress |
-| v0.2.0 | Neighborhood models and user-to-user | planned |
+| v0.1.0 | Core data model and baselines | done (merged) |
+| v0.2.0 | Neighborhood models and user-to-user | in progress |
 | v0.3.0 | Latent factors: SVD/PCA, MF, SVD++, ALS, BPR | planned |
 | v0.4.0 | Streaming: online and incremental learning | planned |
 | v0.5.0 | Signal relevance and funnels | planned |

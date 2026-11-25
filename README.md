@@ -33,6 +33,7 @@ Requires Go 1.24 or newer.
 | [`store`](store) | Incremental, time-decayed interaction store for millions of users and entities |
 | [`sparse`](sparse) | Sparse matrices (CSR) for algorithms |
 | [`algo/popularity`](algo/popularity) | Popularity and trending, online |
+| [`algo/knn`](algo/knn) | Item-kNN and user-kNN, incremental refresh; similar items and user-to-user |
 | [`evaluation`](evaluation) | Precision, recall, NDCG, MAP, hit rate, MRR, coverage; temporal and leave-last-out splits |
 | [`persist`](persist) | Save and load in JSON or binary |
 

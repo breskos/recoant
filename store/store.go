@@ -45,6 +45,17 @@ func (r Relation) String() string { return string(r.Subject) + "→" + string(r.
 type relation struct {
 	rows [][]sparse.Entry // indexed by subject index, sorted by object index
 	nnz  int
+	// subjSeq and objSeq hold the store's change counter at the last
+	// change of each subject's row and object's column.
+	subjSeq, objSeq []uint64
+}
+
+func setSeq(seqs []uint64, i uint32, seq uint64) []uint64 {
+	if int(i) >= len(seqs) {
+		seqs = append(seqs, make([]uint64, int(i)+1-len(seqs))...)
+	}
+	seqs[i] = seq
+	return seqs
 }
 
 // Store holds interaction strengths. Create it with [New].
@@ -57,6 +68,7 @@ type Store struct {
 	latest  time.Time
 	signals int64
 	ignored int64
+	seq     uint64
 }
 
 // New returns an empty store that weights signals with m.
@@ -138,6 +150,61 @@ func (s *Store) add(sig recoant.Signal) {
 	before := len(rel.rows[si])
 	rel.rows[si] = sparse.Add(rel.rows[si], oi, delta)
 	rel.nnz += len(rel.rows[si]) - before
+	s.seq++
+	rel.subjSeq = setSeq(rel.subjSeq, si, s.seq)
+	rel.objSeq = setSeq(rel.objSeq, oi, s.seq)
+}
+
+// Seq returns the store's change counter. It grows with every signal that
+// changes an interaction; pass it to [Store.Changes] later to find what
+// changed since. The counter starts at 0 for a new or restored store.
+func (s *Store) Seq() uint64 {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.seq
+}
+
+// Changes returns the indexes of the subjects whose rows and the objects
+// whose columns changed in a relation after the change counter was since.
+// Algorithms use it to update incrementally.
+func (s *Store) Changes(rel Relation, since uint64) (subjects, objects []uint32) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	r := s.rels[rel]
+	if r == nil {
+		return nil, nil
+	}
+	changed := func(seqs []uint64) []uint32 {
+		var out []uint32
+		for i, q := range seqs {
+			if q > since {
+				out = append(out, uint32(i))
+			}
+		}
+		return out
+	}
+	return changed(r.subjSeq), changed(r.objSeq)
+}
+
+// Row returns a copy of the row of the subject with dense index subject in
+// a relation, with strengths at time now (zero: the latest signal). It is
+// empty for unknown relations and subjects.
+func (s *Store) Row(rel Relation, subject uint32, now time.Time) []sparse.Entry {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	r := s.rels[rel]
+	if r == nil || int(subject) >= len(r.rows) {
+		return nil
+	}
+	if now.IsZero() {
+		now = s.latest
+	}
+	f := float32(s.clock.At(now))
+	row := make([]sparse.Entry, len(r.rows[subject]))
+	for k, e := range r.rows[subject] {
+		row[k] = sparse.Entry{Col: e.Col, Val: e.Val * f}
+	}
+	return row
 }
 
 func (s *Store) rebase(t time.Time) {

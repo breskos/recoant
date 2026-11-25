@@ -1,6 +1,6 @@
 # Architecture (draft)
 
-*State: draft. v0.1 (core types, signal model, store, popularity, evaluation, persistence) is implemented; the rest is planned.*
+*State: draft. v0.1 (core types, signal model, store, popularity, evaluation, persistence) and the neighborhood models of v0.2 are implemented; the rest is planned.*
 
 recoant is a framework for recommendation engines in Go. It takes a stream of
 signals (visits, clicks, dwell time, purchases, …) between anonymized users and
