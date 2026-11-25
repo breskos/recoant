@@ -236,3 +236,39 @@ func BenchmarkAdd(b *testing.B) {
 		_ = s.Add(sigs[i%len(sigs)])
 	}
 }
+
+func TestChangesAndRow(t *testing.T) {
+	s := newStore(t, 0)
+	rel := store.Relation{Subject: recoant.User, Object: "product"}
+	if subj, obj := s.Changes(rel, 0); subj != nil || obj != nil {
+		t.Fatal("changes of unknown relation")
+	}
+	_ = s.Add(sig("u1", "a", recoant.Visit, 0))
+	_ = s.Add(sig("u2", "b", recoant.Visit, 0))
+	seq := s.Seq()
+	_ = s.Add(sig("u2", "c", recoant.Click, 0))
+	_ = s.Add(sig("u2", "c", "share", 0)) // ignored: no change
+	if s.Seq() != seq+1 {
+		t.Fatalf("Seq = %d, want %d", s.Seq(), seq+1)
+	}
+	subj, obj := s.Changes(rel, seq)
+	u2, _ := s.Index(recoant.U("u2"))
+	c, _ := s.Index(p("c"))
+	if len(subj) != 1 || subj[0] != u2 || len(obj) != 1 || obj[0] != c {
+		t.Errorf("Changes = %v, %v", subj, obj)
+	}
+	if all, _ := s.Changes(rel, 0); len(all) != 2 {
+		t.Errorf("Changes since 0 = %v", all)
+	}
+	row := s.Row(rel, u2, time.Time{})
+	if len(row) != 2 || row[1].Col != c || row[1].Val != 2 {
+		t.Errorf("Row = %v", row)
+	}
+	row[0].Val = 99 // a copy
+	if s.Strength(recoant.U("u2"), p("b"), t0) != 1 {
+		t.Error("Row is not a copy")
+	}
+	if s.Row(rel, 99, t0) != nil || s.Row(store.Relation{Subject: "x", Object: "y"}, 0, t0) != nil {
+		t.Error("Row of unknown subject or relation")
+	}
+}
