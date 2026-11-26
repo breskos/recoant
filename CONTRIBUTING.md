@@ -38,4 +38,14 @@ Example programs live in [examples](examples). Unit tests use small hand-made fi
 3. Run `make vet test lint` before pushing.
 4. Describe what changed and why in the pull request.
 
+## Releases
+
+Versions follow [Semantic Versioning](https://semver.org/); before v1.0.0 a minor version may break the API, with migration notes in the changelog.
+
+1. Move the "Unreleased" entries in [CHANGELOG.md](CHANGELOG.md) to a new version section with the date, update the compare links and the status in [ROADMAP.md](ROADMAP.md).
+2. Merge to `main` and wait for CI.
+3. Tag the merge commit with an annotated tag and push it: `git tag -a v0.X.0 -m "v0.X.0" && git push origin v0.X.0`.
+4. Create the GitHub release from the changelog section.
+5. Ask the Go module proxy for the new version so that pkg.go.dev lists it: `GOPROXY=https://proxy.golang.org go list -m github.com/breskos/recoant@v0.X.0`.
+
 By contributing, you agree that your contributions are licensed under the [Apache License 2.0](LICENSE).
