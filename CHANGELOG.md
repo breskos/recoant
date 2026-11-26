@@ -4,6 +4,10 @@ All notable changes to this project are documented in this file. The format foll
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-11-26
+
+Segments and profiles.
+
 ### Added
 - **`segment` package**: `segment.KMeans` (k-means++ seeds, 10 restarts by default, or mini-batch k-means with `BatchSize`) and `segment.Segmenter`, which clusters the entities of a kind on taste or appearance vectors of a factor model and on attributes (categories and sets one-hot, numbers and locations standardized, every feature block scaled to the same size, then weighted). Sensitive attributes need `AllowSensitive`. `Segment` assigns new entities to the nearest center; `Profiles` describes each segment (size, share, activity, negative share, typical objects, attribute distributions); `Profile` describes an entity (segment, relative distance to the center, positive and negative interactions, nearest entities).
 - **Roles**: factor models have `Taste(ref)` and `Appearance(ref)`.
@@ -127,7 +131,8 @@ Core data model and baselines.
 - `persist`: save and load stores, signal models and popularity models in JSON or binary, detected on load, written atomically.
 - Project setup: module, CI (vet, race tests, coverage gate, golangci-lint), contribution guidelines and templates.
 
-[Unreleased]: https://github.com/breskos/recoant/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/breskos/recoant/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/breskos/recoant/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/breskos/recoant/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/breskos/recoant/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/breskos/recoant/compare/v0.3.0...v0.4.0
