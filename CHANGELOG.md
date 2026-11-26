@@ -8,8 +8,11 @@ All notable changes to this project are documented in this file. The format foll
 - **`segment` package**: `segment.KMeans` (k-means++ seeds, 10 restarts by default, or mini-batch k-means with `BatchSize`) and `segment.Segmenter`, which clusters the entities of a kind on taste or appearance vectors of a factor model and on attributes (categories and sets one-hot, numbers and locations standardized, every feature block scaled to the same size, then weighted). Sensitive attributes need `AllowSensitive`. `Segment` assigns new entities to the nearest center; `Profiles` describes each segment (size, share, activity, negative share, typical objects, attribute distributions); `Profile` describes an entity (segment, relative distance to the center, positive and negative interactions, nearest entities).
 - **Roles**: factor models have `Taste(ref)` and `Appearance(ref)`.
 - **Configuration**: the `segments` section per kind (`k`, `features`, `weights`, `model`, `relation`, `batch_size`, `iterations`, `restarts`, `seed`, `allow_sensitive`, `attribute`). Fit writes every entity's segment into a category attribute (default `segment`, values `s0`, `s1`, …), so filters can use it, e.g. `{"attribute": "segment", "same": true}`. `Engine.Segmenter` returns the segmenter of a kind.
+- **Stable segment numbers**: after a refit every segment keeps the number of the nearest old segment.
 - **Evaluation**: `evaluation.BySegment` reports the metrics per segment.
-- **examples/segments** measures segments on basic/taste-clusters; results in [docs/measurements.md](docs/measurements.md).
+- **examples/segments** measures segments on basic/taste-clusters and segments/customers; results in [docs/measurements.md](docs/measurements.md).
+- **Use case** `examples/usecases/customers`: customer segments from behavior and age, segment and customer profiles, "customers like me", new customers placed immediately.
+- **Data**: the new data set `segments/customers` of recoant-data (6 hidden segments that need behavior and attributes together).
 
 ### Changed
 - The `segments` section of the configuration is accepted (it was rejected as planned before).

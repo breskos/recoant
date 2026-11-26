@@ -271,6 +271,12 @@ with v0.9, segments as model features with v0.10.*
   attribute (default `segment`, values `s0`, `s1`, …), so the usual filters
   apply, e.g. `{"attribute": "segment", "same": true}`.
 - **Per-segment evaluation**: `evaluation.BySegment`.
+- **Stable numbers**: after a refit every segment keeps the number of the
+  nearest old segment, so stored segment attributes keep their meaning.
+- **Choosing features**: combine behavior (taste) with the attributes that
+  separate groups of the same taste; leave out features without
+  information, which weigh as much as the others and blur the segments
+  (measured below).
 
 Measured effect: [measurements](measurements.md#basictaste-clusters--segments).
 

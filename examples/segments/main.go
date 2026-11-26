@@ -29,6 +29,7 @@ import (
 	"time"
 
 	"github.com/breskos/recoant"
+	"github.com/breskos/recoant/attr"
 	"github.com/breskos/recoant/config"
 	"github.com/breskos/recoant/evaluation"
 	"github.com/breskos/recoant/segment"
@@ -52,6 +53,9 @@ func main() {
 	data := flag.String("data", "../recoant-data/synthetic", "folder of the synthetic module of recoant-data")
 	flag.Parse()
 	if err := run(context.Background(), os.Stdout, filepath.Join(*data, "basic", "taste-clusters")); err != nil {
+		log.Fatal(err)
+	}
+	if err := customers(context.Background(), os.Stdout, filepath.Join(*data, "segments", "customers")); err != nil {
 		log.Fatal(err)
 	}
 }
@@ -210,4 +214,109 @@ func readTable(path string, fn func(rec []string)) error {
 		}
 		fn(rec)
 	}
+}
+
+const customerConfig = `{
+  "recoant": 1,
+  "kinds": {
+    "user": {"attributes": {"age": {"type": "number", "sensitive": true}, "city": {"type": "category"}, "membership": {"type": "category"}}},
+    "product": {}
+  },
+  "relations": {"buys": {"subject": "user", "object": "product"}},
+  "signals": {"view": {"relation": "buys", "weight": 1}, "purchase": {"relation": "buys", "weight": 5}},
+  "models": {"taste": {"algorithm": "als", "relation": "buys", "params": {"factors": 16, "seed": 1}}},
+  "segments": {"user": {"k": 6, "model": "taste", "seed": 1, "allow_sensitive": true, FEATURES}}
+}`
+
+// customers compares features on segments/customers, whose hidden
+// segments need behavior and age together.
+func customers(ctx context.Context, w io.Writer, dir string) error {
+	sigs, err := load(filepath.Join(dir, "signals.csv"))
+	if err != nil {
+		return err
+	}
+	truth := map[recoant.Ref]int{}
+	names := map[int]string{}
+	if err := readTable(filepath.Join(dir, "users.csv"), func(rec []string) {
+		c, _ := strconv.Atoi(rec[1])
+		truth[recoant.U(rec[0])], names[c] = c, rec[2]
+	}); err != nil {
+		return err
+	}
+	var events []attr.Event
+	if err := readTable(filepath.Join(dir, "attributes.csv"), func(rec []string) {
+		if rec[1] != "user" {
+			return
+		}
+		v := attr.Cat(rec[5])
+		if rec[4] == "age" {
+			a, _ := strconv.ParseFloat(rec[5], 64)
+			v = attr.Num(a)
+		}
+		events = append(events, attr.Event{Ref: recoant.U(rec[2]), Attribute: rec[4], Value: v})
+	}); err != nil {
+		return err
+	}
+	_, _ = fmt.Fprintf(w, "\nsegments/customers: %d customers in 6 hidden segments, %d signals, k = 6\n\n", len(truth), len(sigs))
+	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', tabwriter.AlignRight)
+	_, _ = fmt.Fprintln(tw, "features\tpurity\tadjusted Rand\t")
+	var best *config.Engine
+	for _, v := range []struct{ name, features string }{
+		{"taste", `"features": ["taste"]`},
+		{"age", `"features": ["age"]`},
+		{"taste + city", `"features": ["taste", "city"]`},
+		{"taste + age", `"features": ["taste", "age"]`},
+		{"taste + age + membership", `"features": ["taste", "age", "membership"], "weights": {"membership": 0.5}`},
+	} {
+		c, err := config.Load(strings.NewReader(strings.Replace(customerConfig, "FEATURES", v.features, 1)))
+		if err != nil {
+			return err
+		}
+		e, err := c.Build()
+		if err != nil {
+			return err
+		}
+		for _, ev := range events {
+			if err := e.Apply(ev); err != nil {
+				return err
+			}
+		}
+		if err := e.AddBatch(ctx, sigs); err != nil {
+			return err
+		}
+		if err := e.Fit(ctx); err != nil {
+			return err
+		}
+		seg, _ := e.Segmenter(recoant.User)
+		purity, ari := compare(seg, truth)
+		_, _ = fmt.Fprintf(tw, "%s\t%.3f\t%.3f\t\n", v.name, purity, ari)
+		if v.name == "taste + age" {
+			best = e
+		}
+	}
+	if err := tw.Flush(); err != nil {
+		return err
+	}
+	// Profiles of the taste + age segments, named by their majority segment.
+	seg, _ := best.Segmenter(recoant.User)
+	_, _ = fmt.Fprintln(w, "\nprofiles (taste + age):")
+	for _, p := range seg.Profiles() {
+		count := map[int]int{}
+		for _, m := range seg.Members(p.Segment) {
+			count[truth[m]]++
+		}
+		major := 0
+		for c, n := range count {
+			if n > count[major] {
+				major = c
+			}
+		}
+		age := p.Attributes["age"]
+		var membership []string
+		for _, x := range p.Attributes["membership"].Values {
+			membership = append(membership, fmt.Sprintf("%s %.0f %%", x.Value, 100*x.Share))
+		}
+		_, _ = fmt.Fprintf(w, "  s%d  %4d customers  age %2.0f–%2.0f (mean %2.0f)  %s  → %s\n", p.Segment, p.Size, age.Min, age.Max, age.Mean, strings.Join(membership, ", "), names[major])
+	}
+	return nil
 }

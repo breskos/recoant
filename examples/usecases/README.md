@@ -1,6 +1,6 @@
 # Use cases
 
-**What could you build with recoant?** Six small, runnable stories, each a complete application in about 200 lines of Go and one JSON configuration. Pick the one closest to your idea, run it, and copy its configuration as your starting point.
+**What could you build with recoant?** Seven small, runnable stories, each a complete application in about 200 lines of Go and one JSON configuration. Pick the one closest to your idea, run it, and copy its configuration as your starting point.
 
 Each needs no data download, runs in about a second and prints the same result every time:
 
@@ -16,6 +16,7 @@ go run ./examples/usecases/shop
 | **recipes**, wine, books, restaurants: anything rated with stars | [recipes](recipes) | Star ratings that count in both directions, "ready in 30 minutes", vegetarian from the user's settings, similar recipes |
 | **events**, meetups, venues, courses | [events](events) | Events in my city, events near where I am right now, free only, past events disappearing |
 | a **job board**, freelancing, housing: two-sided markets | [jobs](jobs) | Jobs for candidates, candidates for jobs, matching skills, salary range, distance |
+| **customer insight**: segments, profiles, targeting | [customers](customers) | Segments from behavior and age, a profile of every segment and customer, "customers like me", new customers placed immediately |
 
 ## What every use case shows
 
@@ -51,6 +52,8 @@ Each README explains the configuration of its use case, the design decisions wor
 | something deleted everywhere at once | `engine.Delete` | dating, events |
 | old data dropped | `privacy.retention`, `engine.Expire` | dating |
 | sensitive data kept out of exports | `sensitive`, `ExportAttributes` | dating |
+| groups of customers and their profiles | `segments`, `Segmenter.Profiles`, `Segmenter.Profile` | customers |
+| "from my segment" | filter `{"attribute": "segment", "same": true}` | customers |
 
 ## From example to application
 

@@ -11,7 +11,13 @@
 //
 // After Fit, [Segmenter.Segment] tells the segment of an entity (new
 // entities are assigned to the nearest center), [Segmenter.Profiles]
-// describes every segment and [Segmenter.Profile] one entity.
+// describes every segment and [Segmenter.Profile] one entity. Segment
+// numbers stay stable across refits: each new segment keeps the number of
+// the nearest old one.
+//
+// Choose features with care: a feature without information weighs as much
+// as the others and blurs the segments. Combine behavior (taste) with the
+// attributes that separate groups of the same taste.
 package segment
 
 import (
@@ -162,6 +168,12 @@ func (s *Segmenter) Fit(ctx context.Context) error {
 		return err
 	}
 	f.centers, f.assign = c.Centers, c.Assign
+	s.mu.RLock()
+	prev := s.fit
+	s.mu.RUnlock()
+	if prev != nil {
+		keepNumbers(prev.centers, f)
+	}
 	if f.profiles, err = s.profiles(f); err != nil {
 		return err
 	}
@@ -608,4 +620,52 @@ func (s *Segmenter) Profile(ref recoant.Ref, n int) (EntityProfile, bool) {
 		}
 	}
 	return prof, true
+}
+
+// keepNumbers renumbers the new segments so that each keeps the number of
+// the nearest old segment (greedily, closest pairs first). Segment numbers
+// then stay stable across refits, and stored segment attributes keep their
+// meaning. Nothing changes if the feature dimensions differ.
+func keepNumbers(old [][]float64, f *fitted) {
+	if len(old) == 0 || len(f.centers) == 0 || len(old[0]) != len(f.centers[0]) {
+		return
+	}
+	type pair struct {
+		o, n int
+		d    float64
+	}
+	var pairs []pair
+	for o, oc := range old {
+		for n, nc := range f.centers {
+			pairs = append(pairs, pair{o, n, sqDist(oc, nc)})
+		}
+	}
+	slices.SortStableFunc(pairs, func(a, b pair) int { return cmp.Compare(a.d, b.d) })
+	to := make([]int, len(f.centers)) // new number of each new segment
+	for i := range to {
+		to[i] = -1
+	}
+	taken := map[int]bool{}
+	for _, p := range pairs {
+		if to[p.n] < 0 && !taken[p.o] && p.o < len(f.centers) {
+			to[p.n], taken[p.o] = p.o, true
+		}
+	}
+	free := 0
+	for n := range to { // segments without a partner take the free numbers
+		for to[n] < 0 {
+			if !taken[free] {
+				to[n], taken[free] = free, true
+			}
+			free++
+		}
+	}
+	centers := make([][]float64, len(f.centers))
+	for n, c := range f.centers {
+		centers[to[n]] = c
+	}
+	f.centers = centers
+	for i, a := range f.assign {
+		f.assign[i] = to[a]
+	}
 }

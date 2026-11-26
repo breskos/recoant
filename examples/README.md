@@ -4,7 +4,7 @@ Runnable example programs. They are excluded from the coverage gate in CI.
 
 | Example | Purpose |
 | --- | --- |
-| [usecases](usecases) | **Start here.** Six runnable use cases with a story each: online shop, dating, music, recipes, events, job board. Every one shows how to model an application with recoant and which design decisions to copy: `go run ./examples/usecases/shop` |
+| [usecases](usecases) | **Start here.** Seven runnable use cases with a story each: online shop, dating, music, recipes, events, job board, customer segments. Every one shows how to model an application with recoant and which design decisions to copy: `go run ./examples/usecases/shop` |
 | [config](config) | Example configurations: a shop (implicit signals, star ratings, returns) and a people-discovery app (likes and passes between users, mutual age preferences, distance filter, retention) |
 | [segments](segments) | Measure segments on basic/taste-clusters of [recoant-data](https://github.com/breskos/recoant-data): how well k-means and mini-batch k-means on ALS taste vectors recover the hidden clusters (purity, adjusted Rand index), segment profiles and the hit rate per segment: `go run ./examples/segments -data ../recoant-data/synthetic` |
 | [matching](matching) | Measure reciprocal matching on the dating data set of [recoant-data](https://github.com/breskos/recoant-data): one-way ALS against reciprocal matching with and without exposure balancing, framed by a random floor and an oracle; reports expected and logged matches and how concentrated recommendations are: `go run ./examples/matching -data ../recoant-data/synthetic` |
