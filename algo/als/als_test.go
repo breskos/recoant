@@ -90,3 +90,11 @@ func TestErrors(t *testing.T) {
 		t.Errorf("Refresh fits: %v", err)
 	}
 }
+
+func TestRejected(t *testing.T) {
+	m, _ := als.New(testfix.NegativeStore(t), als.Config{Relation: testfix.Rel, Factors: 4, Seed: 1})
+	if err := m.Fit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	testfix.CheckRejected(t, m)
+}

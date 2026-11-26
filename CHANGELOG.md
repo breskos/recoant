@@ -3,6 +3,26 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added (v0.4: signals 2.0 and configuration)
+- **Feedback kinds** in the signal model: `signal.Implicit` (default), `signal.Rating` with `Scale` and `Neutral` (a 1-star rating on a 1–5 scale with neutral 3 counts negative) and `signal.Negative` (dislike, pass, return, block).
+- **Channels** per relation with their own aggregation — `signal.Sum`, `signal.Last` (a re-rating replaces the old rating), `signal.Max`, `signal.Mean` — and half-life. Defaults: `positive`, `negative` and `rating`. `store.ChannelMatrix` returns the raw values of a channel, `store.Channels` lists them.
+- **Named relations**: `Rule.Relation`, `store.Relation.Name`, `signal.RelationSpec` with kinds, half-life and channel settings per relation. Signals for a declared relation must connect its kinds.
+- **Preference**: `store.Matrix`, `Row`, `Strength` and `Interactions` return the signed preference, the sum over channels of weight·(value − neutral).
+- **Negative feedback in the models**: rejected objects are never recommended unless `recoant.Request.IncludeRejected` is set (`store.Rejected`, `recoant.Rejecter`); popularity counts negative signals down; Jaccard ignores negative interactions; cosine kNN uses signed strengths; ALS treats negative preference as confident zeros; BPR samples rejected objects as hard negatives; `mf.Config.Channel` trains on a channel such as the ratings.
+- **`config` package**: versioned JSON configuration with kinds (and attribute schemas, used from v0.5), relations, channels, signals, models and serving; strict validation with field paths in errors; `Config.Build` creates an `Engine` with store and models, `Engine.Recommend` answers a serving declaration with fallback. Durations as strings, including days (`"30d"`).
+- Example configurations: `examples/config/shop.json`, `examples/config/people.json`.
+
+### Changed (v0.4)
+- `signal.Model.Weight` returns the signed contribution (negative for negative feedback, centered for ratings). `Strength` uses the decay of the signal's channel.
+- `signal.Model.ChannelNames` and `ChannelSpec` take the relation name.
+- Store snapshots are version 2 (channels per relation); version 1 snapshots still load as one `positive` channel.
+
+### Migration (v0.4)
+- `store.Relation` has a `Name` field. Code that builds `store.Relation{Subject: …, Object: …}` keeps working for signals whose rule names no relation.
+- Code that relied on `Weight` being non-negative must handle negative values.
+- Recommenders now exclude rejected objects by default; set `IncludeRejected` to get the previous behavior.
+
+
 ### Added
 - `algo/svd`: PureSVD with a randomized truncated SVD (Halko, Martinsson and Tropp) that never forms a dense matrix; optional centering turns it into a PCA. Subjects are folded in from their live history.
 - `algo/mf`: matrix factorization for explicit feedback trained with SGD: Funk-SVD, biased MF and SVD++. `Predict` for rating prediction; SVD++ folds in subjects that were not part of training.

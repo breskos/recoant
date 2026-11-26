@@ -1,6 +1,6 @@
 # Architecture
 
-*State: draft. Implemented: core types, signal model, store, popularity, evaluation and persistence (v0.1), neighborhood models (v0.2), latent factor models (v0.3). Everything from "Signals 2.0" on is the design for the next versions; see the [roadmap](../ROADMAP.md).*
+*State: draft. Implemented: core types, signal model, store, popularity, evaluation and persistence (v0.1), neighborhood models (v0.2), latent factor models (v0.3), signals 2.0 and the configuration (v0.4). Roles and matching, attributes and segments are the design for the next versions; see the [roadmap](../ROADMAP.md).*
 
 recoant is a framework for recommendation engines in Go. It takes a stream of
 signals between anonymized users and entities — visits, clicks, dwell time,
@@ -82,7 +82,7 @@ configured.
 
 ## Signals 2.0: feedback, channels and relations
 
-*Planned for v0.4. Today every signal adds to one strength per pair.*
+*Implemented in v0.4.*
 
 ### Feedback kinds
 
@@ -259,8 +259,10 @@ reciprocity mode.
 
 ## Configuration
 
-*Introduced in v0.4 for signals and relations; every later version extends
-the schema.*
+*Implemented in v0.4 for kinds, relations, signals, models and serving;
+every later version extends the schema. Sections of later versions
+(matching, segments, privacy, serving filters) are rejected with the version
+that introduces them.*
 
 The modeling of an application lives in one configuration file. JSON,
 because recoant uses the standard library only; the schema is versioned and
@@ -279,44 +281,55 @@ validated on load with error messages that point to the offending field.
 
 ### Example: shop
 
+[examples/config/shop.json](../examples/config/shop.json) (loads and builds
+in v0.4):
+
 ```json
 {
   "recoant": 1,
+  "half_life": "30d",
   "kinds": {
     "user": {},
     "product": {
       "attributes": {
         "category": {"type": "category"},
-        "brand":    {"type": "category"},
-        "price":    {"type": "number"}
+        "brand": {"type": "category"},
+        "price": {"type": "number"}
       }
     }
   },
   "relations": {
-    "interacts": {"subject": "user", "object": "product", "half_life": "720h"}
+    "interacts": {"subject": "user", "object": "product"}
   },
   "signals": {
-    "visit":    {"relation": "interacts", "feedback": "implicit", "weight": 1},
-    "dwell":    {"relation": "interacts", "feedback": "implicit", "weight": 3,
-                 "transform": {"kind": "saturate", "param": 60}},
-    "purchase": {"relation": "interacts", "feedback": "implicit", "weight": 10},
-    "stars":    {"relation": "interacts", "feedback": "rating", "scale": [1, 5], "neutral": 3},
-    "return":   {"relation": "interacts", "feedback": "negative", "weight": 8},
-    "hide":     {"relation": "interacts", "feedback": "negative", "weight": 5}
+    "visit": {"relation": "interacts", "weight": 1},
+    "click": {"relation": "interacts", "weight": 2},
+    "dwell": {"relation": "interacts", "weight": 3, "transform": {"kind": "saturate", "param": 60}},
+    "cart": {"relation": "interacts", "weight": 5},
+    "purchase": {"relation": "interacts", "weight": 10},
+    "stars": {"relation": "interacts", "feedback": "rating", "scale": [1, 5], "neutral": 3, "weight": 2},
+    "return": {"relation": "interacts", "feedback": "negative", "weight": 8},
+    "hide": {"relation": "interacts", "feedback": "negative", "weight": 20}
   },
   "models": {
-    "main":    {"algorithm": "als",   "relation": "interacts", "params": {"factors": 64}},
-    "similar": {"algorithm": "item-knn", "relation": "interacts"},
-    "ratings": {"algorithm": "svd++", "relation": "interacts", "channel": "rating"}
+    "main": {"algorithm": "als", "relation": "interacts", "params": {"factors": 64, "seed": 1}},
+    "similar": {"algorithm": "item-knn", "relation": "interacts", "params": {"shrink": 10}},
+    "ratings": {"algorithm": "svd++", "relation": "interacts", "channel": "rating", "params": {"factors": 16, "seed": 1}},
+    "trending": {"algorithm": "popularity", "params": {"half_life": "2d"}}
   },
   "serving": {
-    "for_you":  {"model": "main", "exclude_seen": true, "exclude_rejected": true, "fallback": "trending"},
-    "similar":  {"model": "similar"}
+    "for_you": {"model": "main", "exclude_seen": true, "fallback": "trending", "k": 20},
+    "similar": {"model": "similar", "k": 10},
+    "top": {"model": "trending", "target": "product"}
   }
 }
 ```
 
 ### Example: dating
+
+The target configuration; `matching`, `segments`, `privacy` and serving
+`filters` arrive with v0.5–v0.7. The part that works in v0.4 is in
+[examples/config/people.json](../examples/config/people.json).
 
 ```json
 {
@@ -387,10 +400,10 @@ configuration builds the same objects.
 | Package | Purpose | Status |
 | --- | --- | --- |
 | `recoant` | Core types and interfaces | ✓ |
-| `signal` | Signal model: feedback kinds, weights, transforms, scales, decay | ✓, extended in v0.4 |
-| `store` | Channels per relation, ID dictionaries, change tracking | ✓, extended in v0.4 |
+| `signal` | Signal model: feedback kinds, weights, transforms, scales, channels, decay | ✓ |
+| `store` | Channels per relation, ID dictionaries, change tracking | ✓ |
 | `sparse` | Sparse matrices | ✓ |
-| `config` | Loading and validating the configuration, building the objects | v0.4 |
+| `config` | Loading and validating the configuration, building the objects | ✓ |
 | `attr` | Attribute schemas, store and filters | v0.5 |
 | `match` | Reciprocal recommendation and exposure balancing | v0.6 |
 | `segment` | Clustering, segment and entity profiles | v0.7 |

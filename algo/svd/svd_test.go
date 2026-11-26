@@ -121,3 +121,11 @@ func TestErrors(t *testing.T) {
 		t.Errorf("unsupported: %v", err)
 	}
 }
+
+func TestRejected(t *testing.T) {
+	m, _ := svd.New(testfix.NegativeStore(t), svd.Config{Relation: testfix.Rel, Factors: 2, Seed: 1})
+	if err := m.Fit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	testfix.CheckRejected(t, m)
+}

@@ -12,8 +12,8 @@ Until v1.0.0 minor versions may change the API; every breaking change is listed 
 | --- | --- | --- |
 | v0.1.0 | Core data model and baselines | done (merged) |
 | v0.2.0 | Neighborhood models and user-to-user | done (merged) |
-| v0.3.0 | Latent factors: SVD/PCA, MF, SVD++, ALS, BPR | in review |
-| v0.4.0 | Signals 2.0 and configuration | planned |
+| v0.3.0 | Latent factors: SVD/PCA, MF, SVD++, ALS, BPR | in review (PR #6) |
+| v0.4.0 | Signals 2.0 and configuration | in progress |
 | v0.5.0 | Attributes | planned |
 | v0.6.0 | User-to-user: roles and reciprocal matching | planned |
 | v0.7.0 | Segments and profiles | planned |

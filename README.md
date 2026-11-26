@@ -14,7 +14,7 @@ A recommendation framework in Go: from streams of user signals to recommendation
 - Many algorithms behind one interface: popularity, neighborhood models, SVD/PCA, matrix factorization (Funk-SVD, SVD++), ALS, BPR, graph walks and hybrids
 - Ranking metrics with temporal splits and prequential evaluation for streams
 
-> **Status:** in development. Implemented: signals, store, popularity, kNN and latent factor models. Next: negative feedback and star ratings, configuration, attributes, reciprocal user-to-user matching and segments. See the [architecture](docs/architecture.md) and the [roadmap](ROADMAP.md).
+> **Status:** in development. Implemented: signals with implicit, rating and negative feedback, named relations, configuration, popularity, kNN and latent factor models. Next: attributes, reciprocal user-to-user matching and segments. See the [architecture](docs/architecture.md) and the [roadmap](ROADMAP.md).
 
 ## Install
 
@@ -29,9 +29,10 @@ Requires Go 1.24 or newer.
 | Package | Purpose |
 | --- | --- |
 | [`recoant`](.) | Core types: `Ref`, `Signal`, `Request`, `Scored`, `Recommender`, `Observer` |
-| [`signal`](signal) | Signal model: weights, value transforms (e.g. saturating dwell time), half-life |
+| [`signal`](signal) | Signal model: implicit, rating and negative feedback, weights, transforms, channels, half-life |
 | [`store`](store) | Incremental, time-decayed interaction store for millions of users and entities |
 | [`sparse`](sparse) | Sparse matrices (CSR) for algorithms |
+| [`config`](config) | Model an application in a JSON configuration: kinds, relations, signals, models, serving |
 | [`algo/popularity`](algo/popularity) | Popularity and trending, online |
 | [`algo/knn`](algo/knn) | Item-kNN and user-kNN, incremental refresh; similar items and user-to-user |
 | [`algo/svd`](algo/svd) | PureSVD and PCA with a randomized truncated SVD |
@@ -42,6 +43,27 @@ Requires Go 1.24 or newer.
 | [`persist`](persist) | Save and load in JSON or binary |
 
 More packages follow the [roadmap](ROADMAP.md).
+
+## Configure an application
+
+The modeling of an application — kinds, relations, what each signal means, which models run — lives in a JSON configuration (see [examples/config](examples/config) and the [architecture](docs/architecture.md#configuration)):
+
+```go
+c, err := config.LoadFile("shop.json")
+if err != nil {
+	log.Fatal(err)
+}
+engine, err := c.Build()
+if err != nil {
+	log.Fatal(err)
+}
+_ = engine.Add(recoant.Signal{
+	Subject: recoant.U("8f3a…"), Object: recoant.Ref{Kind: "product", ID: "p-17"},
+	Type: "stars", Value: 2, Time: time.Now(), // below neutral 3: negative feedback
+})
+_ = engine.Fit(ctx)
+recs, err := engine.Recommend(ctx, "for_you", recoant.U("8f3a…"), 10)
+```
 
 ## Quickstart
 

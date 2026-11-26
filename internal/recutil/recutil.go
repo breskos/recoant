@@ -34,18 +34,12 @@ func DirectionOf(rel store.Relation, req recoant.Request) Direction {
 	return Unsupported
 }
 
-// SeenIn returns a function that reports whether index j is in row.
-func SeenIn(row []sparse.Entry) func(uint32) bool {
-	return func(j uint32) bool {
-		_, ok := sparse.Get(row, j)
-		return ok
-	}
-}
-
 // Admit returns a function that reports whether the target index j may be
-// recommended: not the subject, not excluded, not seen (if seen is not nil)
-// and accepted by the request's filter.
-func Admit(s *store.Store, req recoant.Request, seen func(uint32) bool) func(uint32) bool {
+// recommended: not the subject, not excluded, accepted by the request's
+// filter and, given the subject's history row (nil if the target kind is
+// not the history's object kind), not seen if ExcludeSeen and not rejected
+// (negative value) unless IncludeRejected.
+func Admit(s *store.Store, req recoant.Request, history []sparse.Entry) func(uint32) bool {
 	excluded := make(map[uint32]bool, len(req.Exclude)+1)
 	for _, r := range append([]recoant.Ref{req.Subject}, req.Exclude...) {
 		if r.Kind == req.Target {
@@ -55,8 +49,13 @@ func Admit(s *store.Store, req recoant.Request, seen func(uint32) bool) func(uin
 		}
 	}
 	return func(j uint32) bool {
-		if excluded[j] || (seen != nil && seen(j)) {
+		if excluded[j] {
 			return false
+		}
+		if history != nil {
+			if v, ok := sparse.Get(history, j); ok && (req.ExcludeSeen || (v < 0 && !req.IncludeRejected)) {
+				return false
+			}
 		}
 		if req.Filter != nil {
 			ref, ok := s.Ref(req.Target, j)

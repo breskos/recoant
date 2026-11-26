@@ -28,6 +28,27 @@ func Add(row []Entry, col uint32, delta float32) []Entry {
 	return slices.Insert(row, i, Entry{Col: col, Val: delta})
 }
 
+// Set sets the value at col in a row sorted by column and returns the row.
+func Set(row []Entry, col uint32, v float32) []Entry {
+	i, found := slices.BinarySearchFunc(row, col, func(e Entry, c uint32) int { return cmp.Compare(e.Col, c) })
+	if found {
+		row[i].Val = v
+		return row
+	}
+	return slices.Insert(row, i, Entry{Col: col, Val: v})
+}
+
+// Max sets the value at col to v if there is none yet or v is larger, and
+// returns the row.
+func Max(row []Entry, col uint32, v float32) []Entry {
+	i, found := slices.BinarySearchFunc(row, col, func(e Entry, c uint32) int { return cmp.Compare(e.Col, c) })
+	if found {
+		row[i].Val = max(row[i].Val, v)
+		return row
+	}
+	return slices.Insert(row, i, Entry{Col: col, Val: v})
+}
+
 // Get returns the value at col in a row sorted by column. ok is false if the
 // row has no entry for col.
 func Get(row []Entry, col uint32) (v float32, ok bool) {

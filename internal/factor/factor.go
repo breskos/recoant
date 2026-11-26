@@ -76,11 +76,7 @@ func Recommend(ctx context.Context, v View, req recoant.Request) ([]recoant.Scor
 			v.Users.Similar(u, linalg.Norm(u), v.UserNorms, recutil.Admit(v.Store, req, nil), tk)
 			break
 		}
-		var seen func(uint32) bool
-		if req.ExcludeSeen {
-			seen = recutil.SeenIn(history)
-		}
-		v.Items.Score(u, v.ItemBias, recutil.Admit(v.Store, req, seen), tk)
+		v.Items.Score(u, v.ItemBias, recutil.Admit(v.Store, req, history), tk)
 	}
 	return recutil.Results(v.Store, req.Target, tk.Sorted()), nil
 }

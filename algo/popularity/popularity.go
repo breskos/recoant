@@ -1,6 +1,7 @@
 // Package popularity recommends the most popular objects of a kind.
 //
-// Popularity is the sum of the weighted signals an object received, with an
+// Popularity is the sum of the weighted signals an object received —
+// negative feedback and ratings below the neutral point count down — with an
 // optional half-life: without decay it ranks by all-time popularity, with a
 // short half-life (hours or days) it ranks what is trending now. It is the
 // baseline every personalized model must beat, and the fallback for
@@ -67,7 +68,9 @@ func New(m signal.Model, cfg Config) (*Popularity, error) {
 }
 
 // SetSeen sets the source used for [recoant.Request.ExcludeSeen], usually
-// the [store.Store] that receives the same signals.
+// the [store.Store] that receives the same signals. If it also implements
+// [recoant.Rejecter], rejected objects are excluded unless
+// [recoant.Request.IncludeRejected] is set.
 func (p *Popularity) SetSeen(s recoant.Seen) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -162,6 +165,10 @@ func (p *Popularity) Recommend(ctx context.Context, req recoant.Request) ([]reco
 		return nil, nil
 	}
 	sc := p.scores[req.Target]
+	var rejecter recoant.Rejecter
+	if r, ok := p.seen.(recoant.Rejecter); ok && !req.IncludeRejected {
+		rejecter = r
+	}
 	excluded := make(map[uint32]struct{}, len(req.Exclude)+1)
 	exclude := func(r recoant.Ref) {
 		if r.Kind == req.Target {
@@ -184,12 +191,15 @@ func (p *Popularity) Recommend(ctx context.Context, req recoant.Request) ([]reco
 		if _, ok := excluded[uint32(i)]; ok || s <= 0 {
 			continue
 		}
-		if req.Filter != nil || req.ExcludeSeen {
+		if req.Filter != nil || req.ExcludeSeen || rejecter != nil {
 			ref := recoant.Ref{Kind: req.Target, ID: d.ID(uint32(i))}
 			if req.Filter != nil && !req.Filter(ref) {
 				continue
 			}
 			if req.ExcludeSeen && p.seen.Has(req.Subject, ref) {
+				continue
+			}
+			if rejecter != nil && rejecter.Rejected(req.Subject, ref) {
 				continue
 			}
 		}

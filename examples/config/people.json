@@ -1,0 +1,33 @@
+{
+  "recoant": 1,
+  "kinds": {
+    "user": {
+      "attributes": {
+        "age": {"type": "number", "sensitive": true},
+        "location": {"type": "geo", "sensitive": true},
+        "interests": {"type": "set"}
+      }
+    }
+  },
+  "relations": {
+    "likes": {
+      "subject": "user", "object": "user", "half_life": "60d",
+      "channels": {"negative": {"no_decay": true}}
+    }
+  },
+  "signals": {
+    "view": {"relation": "likes", "weight": 0.5},
+    "like": {"relation": "likes", "weight": 5},
+    "superlike": {"relation": "likes", "weight": 10},
+    "message": {"relation": "likes", "weight": 8},
+    "pass": {"relation": "likes", "feedback": "negative", "weight": 3},
+    "block": {"relation": "likes", "feedback": "negative", "weight": 50}
+  },
+  "models": {
+    "attraction": {"algorithm": "als", "relation": "likes", "params": {"factors": 32, "seed": 1}},
+    "popular": {"algorithm": "popularity"}
+  },
+  "serving": {
+    "discover": {"model": "attraction", "exclude_seen": true, "fallback": "popular", "k": 20}
+  }
+}

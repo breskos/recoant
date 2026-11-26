@@ -22,6 +22,10 @@ type Request struct {
 	Exclude []Ref
 	// ExcludeSeen excludes references the subject has interacted with.
 	ExcludeSeen bool
+	// IncludeRejected allows references the subject rejected: negative
+	// feedback or ratings below the neutral point outweigh the rest. By
+	// default they are never recommended.
+	IncludeRejected bool
 	// Filter, if set, is called for each candidate; false drops it.
 	Filter func(Ref) bool
 	// Time is the reference time for time-decayed scores. Zero means the
@@ -65,4 +69,10 @@ type Observer interface {
 // implement it; recommenders use it for [Request.ExcludeSeen].
 type Seen interface {
 	Has(subject, object Ref) bool
+}
+
+// Rejecter reports whether a subject rejected an object. Stores implement
+// it; recommenders use it unless [Request.IncludeRejected] is set.
+type Rejecter interface {
+	Rejected(subject, object Ref) bool
 }

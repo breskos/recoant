@@ -6,6 +6,7 @@ import (
 	"github.com/breskos/recoant"
 	"github.com/breskos/recoant/internal/recutil"
 	"github.com/breskos/recoant/internal/topk"
+	"github.com/breskos/recoant/sparse"
 	"github.com/breskos/recoant/store"
 )
 
@@ -14,8 +15,8 @@ var recoantZero time.Time
 
 // rank turns candidate scores into the top-k references of the target kind,
 // applying the request's exclusions and filter.
-func rank(s *store.Store, req recoant.Request, scores map[uint32]float64, seen func(uint32) bool) []recoant.Scored {
-	admit := recutil.Admit(s, req, seen)
+func rank(s *store.Store, req recoant.Request, scores map[uint32]float64, history []sparse.Entry) []recoant.Scored {
+	admit := recutil.Admit(s, req, history)
 	tk := topk.New(req.K)
 	for j, sc := range scores {
 		if sc > 0 && admit(j) {

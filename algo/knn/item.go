@@ -152,9 +152,5 @@ func (m *ItemKNN) Recommend(ctx context.Context, req recoant.Request) ([]recoant
 		}
 	}
 	m.mu.RUnlock()
-	seen := func(uint32) bool { return false }
-	if req.ExcludeSeen && history != nil {
-		seen = func(j uint32) bool { _, ok := sparse.Get(history, j); return ok }
-	}
-	return rank(m.store, req, scores, seen), nil
+	return rank(m.store, req, scores, history), nil
 }

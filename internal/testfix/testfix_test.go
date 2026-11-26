@@ -35,3 +35,23 @@ func TestFixture(t *testing.T) {
 		t.Fatal("IDs")
 	}
 }
+
+type respectsRejected struct{}
+
+func (respectsRejected) Recommend(_ context.Context, req recoant.Request) ([]recoant.Scored, error) {
+	if req.IncludeRejected {
+		return []recoant.Scored{{Ref: P("c")}}, nil
+	}
+	return []recoant.Scored{{Ref: P("b")}}, nil
+}
+
+func TestNegative(t *testing.T) {
+	s := NegativeStore(t)
+	if !s.Rejected(recoant.U("u1"), P("c")) {
+		t.Fatal("u1 must reject c")
+	}
+	if len(Hidden()) != len(Groups)+1 {
+		t.Fatal("Hidden")
+	}
+	CheckRejected(t, respectsRejected{})
+}

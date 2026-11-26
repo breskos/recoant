@@ -36,14 +36,17 @@ func center(m *sparse.CSR) {
 func similarities(ctx context.Context, a, at *sparse.CSR, rows []uint32, cfg Config, fn func(i uint32, sims []Neighbor)) error {
 	norms := make([]float64, a.Rows)
 	sizes := make([]int, a.Rows)
+	jaccard := cfg.Similarity == Jaccard
 	for i := range a.Rows {
 		_, vals := a.Row(i)
 		var s float64
 		for _, v := range vals {
 			s += float64(v) * float64(v)
+			if v > 0 {
+				sizes[i]++
+			}
 		}
 		norms[i] = math.Sqrt(s)
-		sizes[i] = len(vals)
 	}
 	workers := cmp.Or(cfg.Workers, runtime.NumCPU())
 	ctx, cancel := context.WithCancel(ctx)
@@ -63,10 +66,13 @@ func similarities(ctx context.Context, a, at *sparse.CSR, rows []uint32, cfg Con
 				idx, vals := a.Row(int(i))
 				for k, f := range idx {
 					fidx, fvals := at.Row(int(f))
-					if cfg.MaxDegree > 0 && len(fidx) > cfg.MaxDegree {
+					if (cfg.MaxDegree > 0 && len(fidx) > cfg.MaxDegree) || (jaccard && vals[k] <= 0) {
 						continue
 					}
 					for l, j := range fidx {
+						if jaccard && fvals[l] <= 0 {
+							continue
+						}
 						if cnt[j] == 0 {
 							touched = append(touched, j)
 						}

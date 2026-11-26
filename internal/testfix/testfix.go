@@ -100,3 +100,57 @@ func CheckGroups(t *testing.T, m Recommender, userToUser bool) {
 		t.Errorf("similar to u1: %v", IDs(res))
 	}
 }
+
+// NegativeModel is the default signal model plus a negative "hide" signal
+// and 1–5 "stars" ratings with neutral 3.
+func NegativeModel() signal.Model {
+	m := signal.DefaultModel()
+	m.Rules["hide"] = signal.Rule{Weight: 20, Feedback: signal.Negative}
+	m.Rules["stars"] = signal.Rule{Weight: 2, Feedback: signal.Rating, Scale: []float64{1, 5}, Neutral: 3}
+	return m
+}
+
+// Hidden is Groups plus u1 hiding c, the product u1 would get first.
+func Hidden() []recoant.Signal {
+	return append(append([]recoant.Signal(nil), Groups...), Sig("u1", "c", "hide", 1))
+}
+
+// NegativeStore returns a store with NegativeModel and Hidden.
+func NegativeStore(t testing.TB) *store.Store {
+	t.Helper()
+	s, err := store.New(NegativeModel())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.AddBatch(context.Background(), Hidden()); err != nil {
+		t.Fatal(err)
+	}
+	return s
+}
+
+// CheckRejected checks a model trained on NegativeStore: c is never
+// recommended to u1, unless the request includes rejected objects.
+func CheckRejected(t *testing.T, m Recommender) {
+	t.Helper()
+	ctx := context.Background()
+	res, err := m.Recommend(ctx, recoant.Request{Subject: recoant.U("u1"), Target: "product", K: 6})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range res {
+		if r.Ref.ID == "c" {
+			t.Errorf("rejected c recommended: %v", IDs(res))
+		}
+	}
+	res, err = m.Recommend(ctx, recoant.Request{Subject: recoant.U("u1"), Target: "product", K: 6, IncludeRejected: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, r := range res {
+		found = found || r.Ref.ID == "c"
+	}
+	if !found && len(res) < 6 {
+		t.Logf("c not among %v with IncludeRejected (allowed: the model may score it too low)", IDs(res))
+	}
+}

@@ -1,10 +1,12 @@
 // Package als implements alternating least squares for implicit feedback
 // (Hu, Koren and Volinsky, 2008).
 //
-// Every interaction is a positive preference with confidence
+// Every pair with a positive preference is a positive with confidence
 // c = 1 + Alpha·strength, where the strength comes from the signal model of
-// the store: a purchase or a long dwell counts more than a visit. Pairs
-// without interaction are weak negatives. ALS alternates between solving
+// the store: a purchase or a long dwell counts more than a visit. Pairs with
+// a negative preference (negative feedback, low ratings) are confident
+// negatives with c = 1 + Alpha·|strength|. Pairs without interaction are
+// weak negatives. ALS alternates between solving
 // all subject vectors with the object vectors fixed and vice versa; each
 // solve is an exact least-squares problem.
 //
@@ -132,13 +134,16 @@ func (s *solver) solve(idx []uint32, vals []float32, out []float64) {
 			continue
 		}
 		f := s.fixed.Row(int(j))
-		c := 1 + s.alpha*math.Max(float64(vals[n]), 0)
+		v := float64(vals[n])
+		c := 1 + s.alpha*math.Abs(v)
 		for a := range k {
 			ca := (c - 1) * f[a]
 			for b := a; b < k; b++ {
 				s.a[a*k+b] += ca * f[b]
 			}
-			s.b[a] += c * f[a]
+			if v > 0 {
+				s.b[a] += c * f[a]
+			}
 		}
 	}
 	for a := range k {

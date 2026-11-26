@@ -9,9 +9,10 @@
 //	SVD++:  r̂ = μ + b_u + b_i + q_i·(p_u + |N(u)|^-½ Σ_{j∈N(u)} y_j)
 //
 // where N(u) are the objects u interacted with. The training targets are
-// the strengths in the store, so use a signal model that maps a rating to
-// its value: weight 1, [signal.Linear] transform and no half-life. The
-// store sums signals, so every pair should be rated once.
+// the raw values of a store channel, usually the rating channel of a
+// [signal.Rating] signal type (Config.Channel = "rating"): a new rating
+// replaces the old one there. Without a channel, the model learns the
+// relation's preference.
 //
 // SVD++ folds a subject in from its live history, so it can recommend for
 // subjects that were not part of training. Funk and biased MF need a Fit.
@@ -47,6 +48,9 @@ const (
 type Config struct {
 	// Relation is the relation to learn from, e.g. user→movie.
 	Relation store.Relation `json:"relation"`
+	// Channel is the store channel with the targets, e.g. "rating". Empty
+	// means the relation's preference.
+	Channel string `json:"channel,omitempty"`
 	// Variant is the model; default Biased.
 	Variant Variant `json:"variant,omitempty"`
 	// Factors is the number of latent factors; default 32.
@@ -121,7 +125,13 @@ func (m *MF) Config() Config { return m.cfg }
 // Fit trains the model on the current strengths in the store.
 func (m *MF) Fit(ctx context.Context) error {
 	now := m.store.Stats().Latest
-	r, err := m.store.Matrix(m.cfg.Relation, now)
+	var r *sparse.CSR
+	var err error
+	if m.cfg.Channel != "" {
+		r, err = m.store.ChannelMatrix(m.cfg.Relation, m.cfg.Channel, now)
+	} else {
+		r, err = m.store.Matrix(m.cfg.Relation, now)
+	}
 	if err != nil {
 		return err
 	}

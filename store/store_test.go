@@ -203,11 +203,14 @@ func TestFromSnapshotErrors(t *testing.T) {
 		"dup id":       func(sn *store.Snapshot) { sn.Kinds[0].IDs = []string{"a", "a"} },
 		"unknown kind": func(sn *store.Snapshot) { sn.Relations[0].Relation.Object = "none" },
 		"dup relation": func(sn *store.Snapshot) { sn.Relations = append(sn.Relations, sn.Relations[0]) },
-		"shape":        func(sn *store.Snapshot) { sn.Relations[0].Values = nil },
-		"rows":         func(sn *store.Snapshot) { sn.Relations[0].Indptr = []int{0, 1, 1, 1} },
-		"bounds":       func(sn *store.Snapshot) { sn.Relations[0].Indptr = []int{0, 1}; sn.Relations[0].Indptr[0] = 2 },
-		"column":       func(sn *store.Snapshot) { sn.Relations[0].Indices[0] = 7 },
-		"model":        func(sn *store.Snapshot) { sn.Model.HalfLife = -1 },
+		"dup channel": func(sn *store.Snapshot) {
+			sn.Relations[0].Channels = append(sn.Relations[0].Channels, sn.Relations[0].Channels[0])
+		},
+		"shape":  func(sn *store.Snapshot) { sn.Relations[0].Channels[0].Values = nil },
+		"rows":   func(sn *store.Snapshot) { sn.Relations[0].Channels[0].Indptr = []int{0, 1, 1, 1} },
+		"bounds": func(sn *store.Snapshot) { sn.Relations[0].Channels[0].Indptr = []int{2, 1} },
+		"column": func(sn *store.Snapshot) { sn.Relations[0].Channels[0].Indices[0] = 7 },
+		"model":  func(sn *store.Snapshot) { sn.Model.HalfLife = -1 },
 	}
 	for name, mutate := range cases {
 		sn := s.Snapshot()
