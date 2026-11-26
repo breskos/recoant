@@ -4,6 +4,9 @@
     "user": {
       "attributes": {
         "age": {"type": "number", "sensitive": true},
+        "min_age": {"type": "number"},
+        "max_age": {"type": "number"},
+        "gender": {"type": "category", "sensitive": true},
         "location": {"type": "geo", "sensitive": true},
         "interests": {"type": "set"}
       }
@@ -28,6 +31,16 @@
     "popular": {"algorithm": "popularity"}
   },
   "serving": {
-    "discover": {"model": "attraction", "exclude_seen": true, "fallback": "popular", "k": 20}
+    "discover": {
+      "model": "attraction", "exclude_seen": true, "fallback": "popular", "k": 20,
+      "filters": [
+        {"attribute": "age", "within": ["min_age", "max_age"], "mutual": true},
+        {"attribute": "location", "max_distance_km": 50}
+      ]
+    }
+  },
+  "privacy": {
+    "retention": {"likes": "365d"},
+    "delete_attributes_with_entity": true
   }
 }

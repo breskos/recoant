@@ -25,6 +25,12 @@ import (
 	"github.com/breskos/recoant/signal"
 )
 
+// historian is implemented by [store.Store]: the objects a subject
+// interacted with and whether it rejected them, in one call.
+type historian interface {
+	History(subject recoant.Ref, object recoant.Kind) map[string]bool
+}
+
 // ErrNoSeen is returned for a request with ExcludeSeen when no [recoant.Seen]
 // source was set.
 var ErrNoSeen = errors.New("popularity: ExcludeSeen needs a Seen source, see SetSeen")
@@ -134,6 +140,23 @@ func (p *Popularity) Fit(ctx context.Context, sigs []recoant.Signal) error {
 	return nil
 }
 
+// Delete forgets an object and its score; it is no longer recommended.
+// Signals with the same ID later count from zero. Delete reports whether
+// the object was known.
+func (p *Popularity) Delete(ref recoant.Ref) bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	d := p.dicts[ref.Kind]
+	if d == nil {
+		return false
+	}
+	i, ok := d.Delete(ref.ID)
+	if ok {
+		p.scores[ref.Kind][i] = 0
+	}
+	return ok
+}
+
 // Score returns the popularity of an object at time now, or 0.
 func (p *Popularity) Score(ref recoant.Ref, now time.Time) float64 {
 	p.mu.RLock()
@@ -169,6 +192,13 @@ func (p *Popularity) Recommend(ctx context.Context, req recoant.Request) ([]reco
 	if r, ok := p.seen.(recoant.Rejecter); ok && !req.IncludeRejected {
 		rejecter = r
 	}
+	// With a historian, the subject's history is read once instead of
+	// asking for every candidate.
+	var history map[string]bool
+	h, isHistorian := p.seen.(historian)
+	if isHistorian && (req.ExcludeSeen || rejecter != nil) {
+		history = h.History(req.Subject, req.Target)
+	}
 	excluded := make(map[uint32]struct{}, len(req.Exclude)+1)
 	exclude := func(r recoant.Ref) {
 		if r.Kind == req.Target {
@@ -196,11 +226,18 @@ func (p *Popularity) Recommend(ctx context.Context, req recoant.Request) ([]reco
 			if req.Filter != nil && !req.Filter(ref) {
 				continue
 			}
-			if req.ExcludeSeen && p.seen.Has(req.Subject, ref) {
-				continue
-			}
-			if rejecter != nil && rejecter.Rejected(req.Subject, ref) {
-				continue
+			if isHistorian {
+				rejected, seen := history[ref.ID]
+				if (req.ExcludeSeen && seen) || (rejecter != nil && rejected) {
+					continue
+				}
+			} else {
+				if req.ExcludeSeen && p.seen.Has(req.Subject, ref) {
+					continue
+				}
+				if rejecter != nil && rejecter.Rejected(req.Subject, ref) {
+					continue
+				}
 			}
 		}
 		tk.Push(uint32(i), s)

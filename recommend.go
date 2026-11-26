@@ -28,12 +28,19 @@ type Request struct {
 	IncludeRejected bool
 	// Filter, if set, is called for each candidate; false drops it.
 	Filter func(Ref) bool
+	// Where restricts the candidates by their attributes. Recommenders do
+	// not evaluate it themselves; wrap them with attr.Filtered, which turns
+	// the conditions into a Filter. A recommender that receives conditions
+	// returns [ErrUnfiltered].
+	Where []Condition
 	// Time is the reference time for time-decayed scores. Zero means the
 	// time of the latest signal the recommender has seen.
 	Time time.Time
 }
 
-// Validate reports an error if the request cannot be answered.
+// Validate reports an error if the request cannot be answered. Requests
+// with attribute conditions (Where) return [ErrUnfiltered]: they must be
+// evaluated by an attribute store first.
 func (r Request) Validate() error {
 	if err := r.Subject.Validate(); err != nil {
 		return fmt.Errorf("%w: subject: %w", ErrInvalidRequest, err)
@@ -43,6 +50,9 @@ func (r Request) Validate() error {
 	}
 	if r.K <= 0 {
 		return fmt.Errorf("%w: k must be positive, got %d", ErrInvalidRequest, r.K)
+	}
+	if len(r.Where) > 0 {
+		return ErrUnfiltered
 	}
 	return nil
 }

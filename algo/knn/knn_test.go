@@ -387,3 +387,45 @@ func TestRejected(t *testing.T) {
 		}
 	}
 }
+
+// References added after Fit have no neighbors yet; histories that contain
+// them still work.
+func TestAfterFit(t *testing.T) {
+	s := testfix.Store(t, testfix.Groups)
+	item, _ := knn.NewItemKNN(s, knn.Config{Relation: rel})
+	user, _ := knn.NewUserKNN(s, knn.Config{Relation: rel})
+	for _, m := range []interface{ Fit(context.Context) error }{item, user} {
+		if err := m.Fit(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	_ = s.Add(sig("newcomer", "novelty", recoant.Purchase, 1))
+	_ = s.Add(sig("u1", "novelty", recoant.Purchase, 1))
+	if item.Neighbors(p("novelty")) != nil || user.Neighbors(recoant.U("newcomer")) != nil {
+		t.Error("neighbors of references added after Fit")
+	}
+	if res, err := item.Recommend(ctx, recoant.Request{Subject: recoant.U("u1"), Target: "product", K: 3, ExcludeSeen: true}); err != nil || len(res) == 0 {
+		t.Errorf("history with a new object: %v %v", res, err)
+	}
+}
+
+// Adjusted cosine centers rows; a deleted subject leaves an empty row.
+func TestAdjustedCosineEmptyRow(t *testing.T) {
+	rating := func(user, product string, v float64) recoant.Signal { return sig(user, product, "rating", v) }
+	m := signal.Model{Rules: map[recoant.SignalType]signal.Rule{"rating": {Weight: 1, Transform: signal.Transform{Kind: signal.Linear}}}}
+	s, _ := store.New(m)
+	_, _ = s.AddBatch(ctx, []recoant.Signal{
+		rating("r1", "a", 1), rating("r1", "b", 3), rating("r1", "c", 5),
+		rating("r2", "a", 3), rating("r2", "b", 4), rating("r2", "c", 5),
+		rating("r3", "a", 5), rating("r3", "b", 3), rating("r3", "c", 1),
+		rating("r4", "a", 2),
+	})
+	s.Delete(recoant.U("r4"))
+	u, _ := knn.NewUserKNN(s, knn.Config{Relation: rel, Similarity: knn.AdjustedCosine})
+	if err := u.Fit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if got := ids(u.Neighbors(recoant.U("r1"))); !slices.Equal(got, []string{"r2"}) {
+		t.Errorf("Neighbors(r1) = %v, want [r2]", got)
+	}
+}

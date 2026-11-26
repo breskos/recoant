@@ -35,7 +35,7 @@ func DirectionOf(rel store.Relation, req recoant.Request) Direction {
 }
 
 // Admit returns a function that reports whether the target index j may be
-// recommended: not the subject, not excluded, accepted by the request's
+// recommended: not deleted, not the subject, not excluded, accepted by the request's
 // filter and, given the subject's history row (nil if the target kind is
 // not the history's object kind), not seen if ExcludeSeen and not rejected
 // (negative value) unless IncludeRejected.
@@ -48,8 +48,9 @@ func Admit(s *store.Store, req recoant.Request, history []sparse.Entry) func(uin
 			}
 		}
 	}
+	deleted := s.Deleted(req.Target)
 	return func(j uint32) bool {
-		if excluded[j] {
+		if excluded[j] || (deleted != nil && deleted(j)) {
 			return false
 		}
 		if history != nil {

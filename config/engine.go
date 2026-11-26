@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/breskos/recoant"
 	"github.com/breskos/recoant/algo/popularity"
+	"github.com/breskos/recoant/attr"
 	"github.com/breskos/recoant/store"
 )
 
@@ -30,10 +32,17 @@ type online struct{ *popularity.Popularity }
 
 func (online) Fit(context.Context) error { return nil }
 
-// Engine holds the store and the models of a configuration.
+// deleter is implemented by models that keep their own IDs.
+type deleter interface {
+	Delete(ref recoant.Ref) bool
+}
+
+// Engine holds the store, the attributes and the models of a
+// configuration.
 type Engine struct {
 	cfg    *Config
 	store  *store.Store
+	attrs  *attr.Store
 	models map[string]Trainable
 	names  []string
 }
@@ -51,7 +60,11 @@ func (c *Config) Build() (*Engine, error) {
 	if err != nil {
 		return nil, err
 	}
-	e := &Engine{cfg: c, store: s, models: make(map[string]Trainable), names: sortedKeys(c.Models)}
+	attrs, err := attr.New(c.Schema())
+	if err != nil {
+		return nil, fmt.Errorf("%w: kinds: %w", ErrInvalid, err)
+	}
+	e := &Engine{cfg: c, store: s, attrs: attrs, models: make(map[string]Trainable), names: sortedKeys(c.Models)}
 	for _, name := range e.names {
 		m, err := c.buildModel(name, s, sm)
 		if err != nil {
@@ -67,6 +80,43 @@ func (e *Engine) Config() *Config { return e.cfg }
 
 // Store returns the store.
 func (e *Engine) Store() *store.Store { return e.store }
+
+// Attributes returns the attribute store.
+func (e *Engine) Attributes() *attr.Store { return e.attrs }
+
+// Apply records an attribute event: set, update or delete.
+func (e *Engine) Apply(ev attr.Event) error { return e.attrs.Apply(ev) }
+
+// Delete removes a user or entity: its signals in the store, its scores in
+// popularity models, and, unless the privacy section disables it, its
+// attributes. Vectors of trained models stay in memory until the next Fit
+// or Refresh, but are never recommended again. Delete reports whether
+// anything was removed.
+func (e *Engine) Delete(ref recoant.Ref) bool {
+	found := e.store.Delete(ref)
+	for _, name := range e.names {
+		if d, ok := e.models[name].(deleter); ok && d.Delete(ref) {
+			found = true
+		}
+	}
+	if p := e.cfg.Privacy; (p == nil || p.DeleteAttributesWithEntity == nil || *p.DeleteAttributesWithEntity) && e.attrs.Delete(ref) {
+		found = true
+	}
+	return found
+}
+
+// Expire drops the pairs of relations with a retention (privacy.retention)
+// whose last signal is older than the retention at time now (zero: the
+// latest signal). It returns the number of pairs dropped. Refresh updates
+// the models afterwards.
+func (e *Engine) Expire(now time.Time) int { return e.store.Expire(now) }
+
+// ExportAttributes returns the attributes of a reference for profiles and
+// exports. Sensitive attributes are left out unless privacy.export_sensitive
+// is set.
+func (e *Engine) ExportAttributes(ref recoant.Ref) map[string]attr.Value {
+	return e.attrs.Attributes(ref, e.cfg.Privacy != nil && e.cfg.Privacy.ExportSensitive)
+}
 
 // Model returns a model by name.
 func (e *Engine) Model(name string) (Trainable, bool) {
@@ -139,8 +189,9 @@ func noData(err error) bool {
 }
 
 // Request returns the request a serving declaration makes for a subject.
-// k overrides the configured number of results if positive.
-func (e *Engine) Request(serving string, subject recoant.Ref, k int) (recoant.Request, error) {
+// k overrides the configured number of results if positive; where adds
+// attribute conditions to the configured filters.
+func (e *Engine) Request(serving string, subject recoant.Ref, k int, where ...recoant.Condition) (recoant.Request, error) {
 	s, ok := e.cfg.Serving[serving]
 	if !ok {
 		return recoant.Request{}, fmt.Errorf("%w: serving %q", ErrUnknown, serving)
@@ -155,20 +206,25 @@ func (e *Engine) Request(serving string, subject recoant.Ref, k int) (recoant.Re
 	if k <= 0 {
 		k = 10
 	}
-	return recoant.Request{Subject: subject, Target: target, K: k, ExcludeSeen: s.ExcludeSeen, IncludeRejected: s.IncludeRejected}, nil
+	var conds []recoant.Condition
+	if len(s.Filters)+len(where) > 0 {
+		conds = append(append(conds, s.Filters...), where...)
+	}
+	return recoant.Request{Subject: subject, Target: target, K: k, ExcludeSeen: s.ExcludeSeen, IncludeRejected: s.IncludeRejected, Where: conds}, nil
 }
 
-// Recommend answers a request of a serving declaration. If the model
-// returns nothing (e.g. for a new subject), the fallback model answers.
-func (e *Engine) Recommend(ctx context.Context, serving string, subject recoant.Ref, k int) ([]recoant.Scored, error) {
-	req, err := e.Request(serving, subject, k)
+// Recommend answers a request of a serving declaration, restricted by its
+// filters and the additional conditions where. If the model returns
+// nothing (e.g. for a new subject), the fallback model answers.
+func (e *Engine) Recommend(ctx context.Context, serving string, subject recoant.Ref, k int, where ...recoant.Condition) ([]recoant.Scored, error) {
+	req, err := e.Request(serving, subject, k, where...)
 	if err != nil {
 		return nil, err
 	}
 	s := e.cfg.Serving[serving]
-	res, err := e.models[s.Model].Recommend(ctx, req)
+	res, err := attr.Filtered(e.models[s.Model], e.attrs).Recommend(ctx, req)
 	if err != nil || len(res) > 0 || s.Fallback == "" {
 		return res, err
 	}
-	return e.models[s.Fallback].Recommend(ctx, req)
+	return attr.Filtered(e.models[s.Fallback], e.attrs).Recommend(ctx, req)
 }

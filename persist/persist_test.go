@@ -13,6 +13,7 @@ import (
 
 	"github.com/breskos/recoant"
 	"github.com/breskos/recoant/algo/popularity"
+	"github.com/breskos/recoant/attr"
 	"github.com/breskos/recoant/persist"
 	"github.com/breskos/recoant/signal"
 	"github.com/breskos/recoant/store"
@@ -168,4 +169,65 @@ func ExampleSaveStore() {
 	}
 	fmt.Println(loaded.Stats().Interactions)
 	// Output: 1
+}
+
+func TestAttributes(t *testing.T) {
+	s, err := attr.New(attr.Schema{recoant.User: {"age": {Type: attr.Number, Sensitive: true}, "tags": {Type: attr.Set}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, ev := range []attr.Event{
+		{Ref: recoant.U("a"), Attribute: "age", Value: attr.Num(30)},
+		{Ref: recoant.U("a"), Attribute: "tags", Value: attr.Tags()},
+		{Ref: recoant.U("b"), Attribute: "tags", Value: attr.Tags("x")},
+	} {
+		if err := s.Apply(ev); err != nil {
+			t.Fatal(err)
+		}
+	}
+	s.Delete(recoant.U("b"))
+	for _, f := range []persist.Format{persist.JSON, persist.Binary} {
+		path := filepath.Join(t.TempDir(), "attrs")
+		if err := persist.SaveAttributes(path, f, s); err != nil {
+			t.Fatal(err)
+		}
+		back, err := persist.LoadAttributes(path)
+		if err != nil {
+			t.Fatalf("%s: %v", f, err)
+		}
+		a := back.Attributes(recoant.U("a"), true)
+		if a["age"].Number != 30 || a["tags"].Type != attr.Set || back.Count(recoant.User, "") != 1 {
+			t.Errorf("%s: %v", f, a)
+		}
+		if _, err := persist.LoadAttributes(filepath.Join(t.TempDir(), "missing")); err == nil {
+			t.Error("missing file")
+		}
+	}
+}
+
+type failingWriter struct{}
+
+func (failingWriter) Write([]byte) (int, error) { return 0, errors.New("disk full") }
+
+func TestWriteErrors(t *testing.T) {
+	for _, f := range []persist.Format{persist.JSON, persist.Binary} {
+		if err := persist.Encode(failingWriter{}, f, "x", 1); err == nil {
+			t.Errorf("%s: write error ignored", f)
+		}
+	}
+	// A failed rename (the target is a directory) leaves no temporary file.
+	dir := t.TempDir()
+	target := filepath.Join(dir, "target")
+	if err := os.Mkdir(target, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(target, "keep"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := persist.Save(target, persist.JSON, "x", 1); err == nil {
+		t.Error("rename onto a directory succeeded")
+	}
+	if entries, _ := os.ReadDir(dir); len(entries) != 1 {
+		t.Errorf("temporary file left: %v", entries)
+	}
 }

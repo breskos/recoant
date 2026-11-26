@@ -1,15 +1,15 @@
 // Package config loads the configuration that models an application:
-// entity kinds, relations, signal semantics, models and serving rules. The
-// same binary can then serve a shop, a news site or a dating app.
+// entity kinds and their attributes, relations, signal semantics, models,
+// serving rules with attribute filters, and privacy. The same binary can
+// then serve a shop, a news site or a dating app.
 //
 // A configuration is JSON (recoant uses the standard library only),
 // versioned with the "recoant" field, and validated on load; errors name
 // the offending field, e.g. "signals.stars.scale: min must be below max".
 // [Config.Build] turns it into an [Engine] with a store and the models.
 //
-// Sections planned for later versions (matching, segments, privacy, serving
-// filters) are recognized and rejected with the version that introduces
-// them.
+// Sections planned for later versions (matching, segments) are recognized
+// and rejected with the version that introduces them.
 package config
 
 import (
@@ -23,6 +23,9 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/breskos/recoant"
+	"github.com/breskos/recoant/attr"
 )
 
 // Version is the configuration format version.
@@ -84,17 +87,31 @@ type Config struct {
 	Models map[string]Model `json:"models"`
 	// Serving declares named request types.
 	Serving map[string]Serving `json:"serving,omitempty"`
+	// Privacy configures retention and the handling of sensitive
+	// attributes.
+	Privacy *Privacy `json:"privacy,omitempty"`
 
 	// Planned sections, rejected until their version.
 	Matching json.RawMessage `json:"matching,omitempty"`
 	Segments json.RawMessage `json:"segments,omitempty"`
-	Privacy  json.RawMessage `json:"privacy,omitempty"`
+}
+
+// Privacy configures retention and deletion.
+type Privacy struct {
+	// Retention is how long a pair of a relation is kept after its last
+	// signal, by relation name; [Engine.Expire] drops older pairs.
+	Retention map[string]Duration `json:"retention,omitempty"`
+	// DeleteAttributesWithEntity makes [Engine.Delete] remove the
+	// attributes of an entity along with its signals. Default true.
+	DeleteAttributesWithEntity *bool `json:"delete_attributes_with_entity,omitempty"`
+	// ExportSensitive includes sensitive attributes in
+	// [Engine.ExportAttributes]. Default false.
+	ExportSensitive bool `json:"export_sensitive,omitempty"`
 }
 
 // Kind declares an entity kind.
 type Kind struct {
-	// Attributes declares the attributes of the kind. They are validated
-	// now and used from v0.5.
+	// Attributes declares the attributes of the kind.
 	Attributes map[string]Attribute `json:"attributes,omitempty"`
 }
 
@@ -175,8 +192,14 @@ type Serving struct {
 	// Fallback is a model used when Model returns nothing, e.g. for new
 	// subjects.
 	Fallback string `json:"fallback,omitempty"`
-	// Filters are planned for v0.5.
-	Filters json.RawMessage `json:"filters,omitempty"`
+	// Subject is the kind of the subjects the requests are made for, used
+	// to check filters that refer to the subject's attributes; default the
+	// subject kind of the model's relation.
+	Subject string `json:"subject,omitempty"`
+	// Filters restrict the candidates by their attributes, e.g.
+	// {"attribute": "age", "within": ["min_age", "max_age"], "mutual": true}
+	// or {"attribute": "location", "max_distance_km": 50}.
+	Filters []recoant.Condition `json:"filters,omitempty"`
 }
 
 // Load reads and validates a configuration. Unknown fields are errors.
@@ -236,7 +259,7 @@ func (c *Config) Validate() error {
 		name    string
 		raw     json.RawMessage
 		version string
-	}{{"matching", c.Matching, "v0.6"}, {"segments", c.Segments, "v0.7"}, {"privacy", c.Privacy, "v0.5"}} {
+	}{{"matching", c.Matching, "v0.6"}, {"segments", c.Segments, "v0.7"}} {
 		if len(p.raw) > 0 {
 			return invalid(p.name, "supported from %s", p.version)
 		}
@@ -304,9 +327,6 @@ func (c *Config) Validate() error {
 	for _, name := range sortedKeys(c.Serving) {
 		s := c.Serving[name]
 		path := "serving." + name
-		if len(s.Filters) > 0 {
-			return invalid(path+".filters", "supported from v0.5")
-		}
 		for field, model := range map[string]string{"model": s.Model, "fallback": s.Fallback} {
 			if _, ok := c.Models[model]; !ok && (field == "model" || model != "") {
 				return invalid(path+"."+field, "unknown model %q", model)
@@ -323,10 +343,70 @@ func (c *Config) Validate() error {
 		if s.K < 0 {
 			return invalid(path+".k", "must not be negative")
 		}
+		if err := c.validateFilters(path, s); err != nil {
+			return err
+		}
+	}
+	if c.Privacy != nil {
+		for _, rel := range sortedKeys(c.Privacy.Retention) {
+			if _, ok := c.Relations[rel]; !ok {
+				return invalid("privacy.retention."+rel, "unknown relation")
+			}
+		}
 	}
 	// The signal model checks transforms, scales and channel consistency.
 	if _, err := c.SignalModel(); err != nil {
 		return err
+	}
+	return nil
+}
+
+// Schema returns the attribute schema of the kinds.
+func (c *Config) Schema() attr.Schema {
+	s := make(attr.Schema, len(c.Kinds))
+	for k, kind := range c.Kinds {
+		if len(kind.Attributes) == 0 {
+			continue
+		}
+		attrs := make(map[string]attr.Spec, len(kind.Attributes))
+		for name, a := range kind.Attributes {
+			attrs[name] = attr.Spec{Type: attr.Type(a.Type), Sensitive: a.Sensitive}
+		}
+		s[recoant.Kind(k)] = attrs
+	}
+	return s
+}
+
+// servingKinds returns the subject and target kind of a serving
+// declaration; subject is empty if it cannot be known.
+func (c *Config) servingKinds(s Serving) (subject, target recoant.Kind) {
+	rel, ok := c.Relations[c.Models[s.Model].Relation]
+	subject, target = recoant.Kind(s.Subject), recoant.Kind(s.Target)
+	if subject == "" && ok {
+		subject = recoant.Kind(rel.Subject)
+	}
+	if target == "" && ok {
+		target = recoant.Kind(rel.Object)
+	}
+	return subject, target
+}
+
+func (c *Config) validateFilters(path string, s Serving) error {
+	if s.Subject != "" {
+		if _, ok := c.Kinds[s.Subject]; !ok {
+			return invalid(path+".subject", "unknown kind %q", s.Subject)
+		}
+	}
+	subject, target := c.servingKinds(s)
+	schema := c.Schema()
+	for i, f := range s.Filters {
+		fp := fmt.Sprintf("%s.filters[%d]", path, i)
+		if subject == "" && attr.NeedsSubject(f) {
+			return invalid(path+".subject", "needed for filters on the subject's attributes")
+		}
+		if err := schema.Check(subject, target, []recoant.Condition{f}); err != nil {
+			return invalid(fp, "%v", err)
+		}
 	}
 	return nil
 }

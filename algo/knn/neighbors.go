@@ -125,7 +125,8 @@ func byBest(a, b Neighbor) int {
 func top(sims []Neighbor, k int) []Neighbor {
 	out := slices.Clone(sims)
 	slices.SortFunc(out, byBest)
-	return out[:min(k, len(out))]
+	// Copy the top k, so that the full list can be freed.
+	return slices.Clone(out[:min(k, len(out))])
 }
 
 // insert adds n to a sorted list of at most k neighbors that does not

@@ -14,9 +14,11 @@ import (
 	"github.com/breskos/recoant/sparse"
 )
 
-// SnapshotVersion is the version of the [Snapshot] layout. Version 1
-// (single channel, before v0.4) can still be restored.
-const SnapshotVersion = 2
+// SnapshotVersion is the version of the [Snapshot] layout. Version 3 adds
+// deleted references (empty IDs) and the times of the last signal per pair
+// for relations with a retention. Versions 1 (single channel, before v0.4)
+// and 2 (before v0.5) can still be restored.
+const SnapshotVersion = 3
 
 // ErrInvalidSnapshot is returned by [FromSnapshot] for inconsistent data.
 var ErrInvalidSnapshot = errors.New("store: invalid snapshot")
@@ -33,7 +35,8 @@ type Snapshot struct {
 	Relations []RelationSnapshot `json:"relations"`
 }
 
-// KindSnapshot holds the IDs of a kind in index order.
+// KindSnapshot holds the IDs of a kind in index order; deleted references
+// have an empty ID.
 type KindSnapshot struct {
 	Kind recoant.Kind `json:"kind"`
 	IDs  []string     `json:"ids"`
@@ -43,6 +46,9 @@ type KindSnapshot struct {
 type RelationSnapshot struct {
 	Relation Relation          `json:"relation"`
 	Channels []ChannelSnapshot `json:"channels,omitempty"`
+	// Stamps holds the time of the last signal per pair, for relations
+	// with a retention.
+	Stamps *StampSnapshot `json:"stamps,omitempty"`
 	// Indptr, Indices and Values hold the single channel of version 1.
 	Indptr  []int     `json:"indptr,omitempty"`
 	Indices []uint32  `json:"indices,omitempty"`
@@ -58,6 +64,14 @@ type ChannelSnapshot struct {
 	Indices []uint32  `json:"indices"`
 	Values  []float32 `json:"values"`
 	Counts  []float32 `json:"counts,omitempty"` // for mean channels
+}
+
+// StampSnapshot holds the times of the last signal per pair in CSR form,
+// in seconds since the Unix epoch.
+type StampSnapshot struct {
+	Indptr  []int    `json:"indptr"`
+	Indices []uint32 `json:"indices"`
+	Times   []uint32 `json:"times"`
 }
 
 // Snapshot returns a copy of the store's content.
@@ -86,20 +100,33 @@ func (s *Store) Snapshot() *Snapshot {
 			}
 			rs.Channels = append(rs.Channels, cs)
 		}
+		if rel.retention > 0 {
+			st := &StampSnapshot{Indptr: make([]int, 1, len(rel.stamps)+1)}
+			for _, row := range rel.stamps {
+				for _, e := range row {
+					st.Indices = append(st.Indices, e.Col)
+					st.Times = append(st.Times, e.T)
+				}
+				st.Indptr = append(st.Indptr, len(st.Indices))
+			}
+			rs.Stamps = st
+		}
 		sn.Relations = append(sn.Relations, rs)
 	}
 	slices.SortFunc(sn.Relations, func(a, b RelationSnapshot) int { return compareRelations(a.Relation, b.Relation) })
 	return sn
 }
 
-// FromSnapshot restores a store from a snapshot of version 1 or 2. The
-// snapshot must not be modified afterwards.
+// FromSnapshot restores a store from a snapshot of version 1, 2 or 3. The
+// snapshot must not be modified afterwards. Pairs of relations with a
+// retention but without recorded times (versions 1 and 2) get the time of
+// the latest signal.
 func FromSnapshot(sn *Snapshot) (*Store, error) {
 	if sn == nil {
 		return nil, fmt.Errorf("%w: nil", ErrInvalidSnapshot)
 	}
-	if sn.Version != 1 && sn.Version != SnapshotVersion {
-		return nil, fmt.Errorf("%w: version %d, want 1 or %d", ErrInvalidSnapshot, sn.Version, SnapshotVersion)
+	if sn.Version < 1 || sn.Version > SnapshotVersion {
+		return nil, fmt.Errorf("%w: version %d, want 1 to %d", ErrInvalidSnapshot, sn.Version, SnapshotVersion)
 	}
 	s, err := New(sn.Model)
 	if err != nil {
@@ -115,6 +142,11 @@ func FromSnapshot(sn *Snapshot) (*Store, error) {
 			return nil, fmt.Errorf("%w: duplicate id in kind %q", ErrInvalidSnapshot, k.Kind)
 		}
 		s.dicts[k.Kind] = d
+		for i, id := range k.IDs {
+			if id == "" {
+				s.markDead(k.Kind, uint32(i))
+			}
+		}
 	}
 	for _, rs := range sn.Relations {
 		if sn.Version == 1 {
@@ -137,7 +169,7 @@ func (s *Store) restoreRelation(rs RelationSnapshot) error {
 	if sd == nil || od == nil {
 		return fmt.Errorf("%w: relation %s refers to unknown kind", ErrInvalidSnapshot, r)
 	}
-	rel := &relation{channels: make(map[string]*channel)}
+	rel := s.newRelation(r.Name)
 	for _, cs := range rs.Channels {
 		spec, _ := s.model.ChannelSpec(r.Name, cs.Name)
 		if _, dup := rel.channels[cs.Name]; dup {
@@ -160,7 +192,42 @@ func (s *Store) restoreRelation(rs RelationSnapshot) error {
 		rel.names = append(rel.names, cs.Name)
 	}
 	slices.Sort(rel.names)
+	if rel.retention > 0 {
+		if err := s.restoreStamps(rel, rs.Stamps, sd.Len(), od.Len()); err != nil {
+			return fmt.Errorf("%w: relation %s stamps: %w", ErrInvalidSnapshot, r, err)
+		}
+	}
 	s.rels[r] = rel
+	return nil
+}
+
+// restoreStamps restores the times of the last signals, or sets the latest
+// signal's time for every pair if the snapshot has none.
+func (s *Store) restoreStamps(rel *relation, st *StampSnapshot, subjects, objects int) error {
+	if st == nil {
+		t := unixStamp(s.latest)
+		for _, ch := range rel.channels {
+			for si, row := range ch.rows {
+				for _, e := range row {
+					rel.stamps = growStamps(rel.stamps, uint32(si))
+					rel.stamps[si] = setStamp(rel.stamps[si], e.Col, t)
+				}
+			}
+		}
+		return nil
+	}
+	vals := make([]float32, len(st.Times))
+	rows, err := restoreRows(st.Indptr, st.Indices, vals, subjects, objects)
+	if err != nil {
+		return errors.New("inconsistent shape")
+	}
+	rel.stamps = make([][]stamp, len(rows))
+	for si, row := range rows {
+		rel.stamps[si] = make([]stamp, len(row))
+		for k, e := range row {
+			rel.stamps[si][k] = stamp{Col: e.Col, T: st.Times[st.Indptr[si]+k]}
+		}
+	}
 	return nil
 }
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"math"
+	"slices"
 	"testing"
 	"time"
 
@@ -200,5 +201,89 @@ func TestRejected(t *testing.T) {
 	// The hide (weight 20) outweighs c's other signals: c counts down.
 	if got := m.Score(testfix.P("c"), testfix.T0); got >= 0 {
 		t.Errorf("Score(c) = %v, want negative", got)
+	}
+}
+
+func TestDelete(t *testing.T) {
+	m, err := popularity.New(signal.DefaultModel(), popularity.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range []recoant.Signal{sig("u1", "a", recoant.Purchase, 0), sig("u1", "b", recoant.Click, 0)} {
+		if err := m.Observe(s); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if !m.Delete(p("a")) || m.Delete(p("a")) || m.Delete(recoant.U("x")) {
+		t.Fatal("Delete")
+	}
+	req := recoant.Request{Subject: recoant.U("u2"), Target: "product", K: 5}
+	res, err := m.Recommend(context.Background(), req)
+	if err != nil || !equal(ids(res), []string{"b"}) {
+		t.Fatalf("after delete: %v %v", ids(res), err)
+	}
+	if m.Score(p("a"), t0) != 0 {
+		t.Error("deleted object has a score")
+	}
+	back, err := popularity.FromSnapshot(m.Snapshot())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res, _ := back.Recommend(context.Background(), req); !equal(ids(res), []string{"b"}) {
+		t.Errorf("restored: %v", ids(res))
+	}
+	if err := m.Observe(sig("u1", "a", recoant.Click, 0)); err != nil || m.Score(p("a"), t0) != 2 {
+		t.Errorf("re-added object must count from zero: %v", m.Score(p("a"), t0))
+	}
+}
+
+// seenOnly wraps a store so that only Has and Rejected are available: the
+// path for Seen sources without a history.
+type seenOnly struct{ s *store.Store }
+
+func (o seenOnly) Has(a, b recoant.Ref) bool      { return o.s.Has(a, b) }
+func (o seenOnly) Rejected(a, b recoant.Ref) bool { return o.s.Rejected(a, b) }
+
+// The answers with and without a history source are the same.
+func TestHistoryAndSeenAgree(t *testing.T) {
+	ctx := context.Background()
+	s, _ := store.New(signal.DefaultModel())
+	fast, _ := popularity.New(signal.DefaultModel(), popularity.Config{})
+	slow, _ := popularity.New(signal.DefaultModel(), popularity.Config{})
+	for _, x := range history {
+		_ = s.Add(x)
+		_ = fast.Observe(x)
+		_ = slow.Observe(x)
+	}
+	neg := signal.DefaultModel()
+	neg.Rules["hide"] = signal.Rule{Weight: 50, Feedback: signal.Negative}
+	s2, _ := store.New(neg)
+	for _, x := range append(slices.Clone(history), sig("u3", "b", "hide", 0)) {
+		_ = s2.Add(x)
+	}
+	for _, src := range []*store.Store{s, s2} {
+		fast.SetSeen(src)
+		slow.SetSeen(seenOnly{src})
+		for _, req := range []recoant.Request{
+			{Subject: recoant.U("u3"), Target: "product", K: 10, ExcludeSeen: true},
+			{Subject: recoant.U("u3"), Target: "product", K: 10},
+			{Subject: recoant.U("u3"), Target: "product", K: 10, IncludeRejected: true},
+			{Subject: recoant.U("nobody"), Target: "product", K: 10, ExcludeSeen: true},
+		} {
+			a, _ := fast.Recommend(ctx, req)
+			b, _ := slow.Recommend(ctx, req)
+			if !equal(ids(a), ids(b)) {
+				t.Errorf("%+v: history %v, seen %v", req, ids(a), ids(b))
+			}
+		}
+	}
+}
+
+func TestSnapshotKindsSorted(t *testing.T) {
+	m, _ := popularity.New(signal.DefaultModel(), popularity.Config{})
+	_ = m.Observe(sig("u1", "a", recoant.Click, 0))
+	_ = m.Observe(recoant.Signal{Subject: recoant.U("u1"), Object: recoant.Ref{Kind: "article", ID: "n"}, Type: recoant.Click, Value: 1, Time: t0})
+	if sn := m.Snapshot(); len(sn.Kinds) != 2 || sn.Kinds[0].Kind != "article" {
+		t.Errorf("kinds = %v", sn.Kinds)
 	}
 }

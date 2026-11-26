@@ -126,6 +126,7 @@ func TestFeedbackValidate(t *testing.T) {
 		{Channels: map[string]signal.Channel{"x": {Aggregate: signal.Mean}}},
 		{Relations: map[string]signal.RelationSpec{"likes": {Subject: recoant.User}}},
 		{Relations: map[string]signal.RelationSpec{"likes": {Subject: recoant.User, Object: recoant.User, HalfLife: -1}}},
+		{Relations: map[string]signal.RelationSpec{"likes": {Subject: recoant.User, Object: recoant.User, Retention: -1}}},
 		{Relations: map[string]signal.RelationSpec{"likes": {Subject: recoant.User, Object: recoant.User, Channels: map[string]signal.Channel{"x": {Aggregate: "nope"}}}}},
 		{Default: &signal.Rule{Weight: 1, Feedback: signal.Rating}, Rules: rules(signal.Rule{Weight: 2, Feedback: signal.Rating})},
 	}

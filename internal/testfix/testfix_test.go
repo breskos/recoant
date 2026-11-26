@@ -55,3 +55,19 @@ func TestNegative(t *testing.T) {
 	}
 	CheckRejected(t, respectsRejected{})
 }
+
+func TestCheckCancel(t *testing.T) {
+	calls := 0
+	CheckCancel(t, func(ctx context.Context) error {
+		calls++
+		for range 3 {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if calls != 4 {
+		t.Errorf("%d calls, want 4", calls)
+	}
+}

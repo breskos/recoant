@@ -4,6 +4,8 @@ package testfix
 
 import (
 	"context"
+	"errors"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -153,4 +155,42 @@ func CheckRejected(t *testing.T, m Recommender) {
 	if !found && len(res) < 6 {
 		t.Logf("c not among %v with IncludeRejected (allowed: the model may score it too low)", IDs(res))
 	}
+}
+
+// countdown is a context whose Err reports cancellation after n calls.
+type countdown struct {
+	context.Context
+	left atomic.Int64
+}
+
+func (c *countdown) Err() error {
+	if c.left.Add(-1) < 0 {
+		return context.Canceled
+	}
+	return nil
+}
+
+// CancelAfter returns a context whose Err reports nothing for the first n
+// calls and context.Canceled afterwards, to reach every point where a
+// model checks its context.
+func CancelAfter(n int64) context.Context {
+	c := &countdown{Context: context.Background()}
+	c.left.Store(n)
+	return c
+}
+
+// CheckCancel runs fn with CancelAfter(0), CancelAfter(1), … until it
+// succeeds. Every failure before must be context.Canceled.
+func CheckCancel(t *testing.T, fn func(ctx context.Context) error) {
+	t.Helper()
+	for n := int64(0); n < 100000; n++ {
+		err := fn(CancelAfter(n))
+		if err == nil {
+			return
+		}
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("after %d checks: %v", n, err)
+		}
+	}
+	t.Fatal("never succeeded")
 }

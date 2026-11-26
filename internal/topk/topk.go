@@ -3,6 +3,7 @@
 package topk
 
 import (
+	"cmp"
 	"container/heap"
 	"slices"
 )
@@ -60,14 +61,9 @@ func (t *TopK) Push(index uint32, score float64) {
 // Sorted returns the kept items, best first.
 func (t *TopK) Sorted() []Item {
 	out := slices.Clone(t.h)
+	// Best first: higher score, then lower index (the order of less).
 	slices.SortFunc(out, func(a, b Item) int {
-		switch {
-		case less(b, a):
-			return -1
-		case less(a, b):
-			return 1
-		}
-		return 0
+		return cmp.Or(cmp.Compare(b.Score, a.Score), cmp.Compare(a.Index, b.Index))
 	})
 	return out
 }
