@@ -8,7 +8,7 @@ repeated.
 
 | Run | Date | recoant | recoant-data | Machine | Raw output |
 | --- | --- | --- | --- | --- | --- |
-| v0.5 | 2026-11-26 | v0.4.0 (`0fac9a2`) + the v0.5 changes | `809f65d` + branch `feat/attributes` (data sets `attributes/*`) | Apple M1, 8 cores, 8 GB RAM, macOS, Go 1.27.4 | [2026-11-26](measurements/2026-11-26) |
+| v0.5 | 2026-11-26 | v0.5.0 (measured on its feature branch; afterwards only tests and two behavior-preserving refactors changed) | `c8e105f` | Apple M1, 8 cores, 8 GB RAM, macOS, Go 1.27.4 | [2026-11-26](measurements/2026-11-26) |
 
 ## Summary
 
