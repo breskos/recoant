@@ -5,7 +5,8 @@
 //
 // Each data set is split by time (80 % train, 20 % test); every model is
 // trained on the train part and asked for the top 10 for each test user,
-// excluding what the user has already seen.
+// excluding what the user has already seen. On the explicit ratings, the
+// matrix factorizations are measured by the RMSE of predicted ratings.
 package main
 
 import (
@@ -24,8 +25,12 @@ import (
 	"time"
 
 	"github.com/breskos/recoant"
+	"github.com/breskos/recoant/algo/als"
+	"github.com/breskos/recoant/algo/bpr"
 	"github.com/breskos/recoant/algo/knn"
+	"github.com/breskos/recoant/algo/mf"
 	"github.com/breskos/recoant/algo/popularity"
+	"github.com/breskos/recoant/algo/svd"
 	"github.com/breskos/recoant/evaluation"
 	"github.com/breskos/recoant/signal"
 	"github.com/breskos/recoant/store"
@@ -95,11 +100,32 @@ func main() {
 				}
 				return m, m.Fit(ctx)
 			}},
+			{"pure-svd", func() (recoant.Recommender, error) {
+				m, err := svd.New(s, svd.Config{Relation: rel, Factors: 32, Seed: 1})
+				if err != nil {
+					return nil, err
+				}
+				return m, m.Fit(ctx)
+			}},
+			{"als", func() (recoant.Recommender, error) {
+				m, err := als.New(s, als.Config{Relation: rel, Seed: 1})
+				if err != nil {
+					return nil, err
+				}
+				return m, m.Fit(ctx)
+			}},
+			{"bpr", func() (recoant.Recommender, error) {
+				m, err := bpr.New(s, bpr.Config{Relation: rel, Seed: 1})
+				if err != nil {
+					return nil, err
+				}
+				return m, m.Fit(ctx)
+			}},
 		}
 		catalog := s.Len(tk.target)
 		for _, md := range models {
-			if tk.target == recoant.User && md.name != "user-knn" {
-				continue // only user-kNN recommends users
+			if tk.target == recoant.User && (md.name == "popularity" || md.name == "item-knn") {
+				continue // these do not recommend users
 			}
 			start := time.Now()
 			r, err := md.make()
@@ -119,7 +145,61 @@ func main() {
 		}
 	}
 	_ = w.Flush()
+	if err := ratings(ctx, filepath.Join(*data, "latent/explicit-ratings/signals.csv")); err != nil {
+		log.Fatal(err)
+	}
 }
+
+// ratings measures the prediction error of the matrix factorizations on
+// star ratings.
+func ratings(ctx context.Context, path string) error {
+	sigs, err := load(path)
+	if err != nil {
+		return err
+	}
+	train, test, err := evaluation.SplitByFraction(sigs, 0.8)
+	if err != nil {
+		return err
+	}
+	model := signal.Model{Rules: map[recoant.SignalType]signal.Rule{
+		"rating": {Weight: 1, Transform: signal.Transform{Kind: signal.Linear}},
+	}}
+	s, err := store.New(model)
+	if err != nil {
+		return err
+	}
+	if _, err := s.AddBatch(ctx, train); err != nil {
+		return err
+	}
+	var mean float64
+	for _, x := range train {
+		mean += x.Value
+	}
+	mean /= float64(len(train))
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', tabwriter.AlignRight)
+	_, _ = fmt.Fprintf(w, "\nlatent/explicit-ratings\tmodel\tratings\tRMSE\tMAE\tfit\t\n")
+	rep := evaluation.Errors(constant(mean), test, nil)
+	_, _ = fmt.Fprintf(w, "\tglobal mean\t%d\t%.4f\t%.4f\t\t\n", rep.N, rep.RMSE, rep.MAE)
+	rel := store.Relation{Subject: recoant.User, Object: "movie"}
+	for _, v := range []mf.Variant{mf.Funk, mf.Biased, mf.SVDPlusPlus} {
+		m, err := mf.New(s, mf.Config{Relation: rel, Variant: v, Factors: 10, Epochs: 100, LearnRate: 0.005, Reg: 0.1, Min: 1, Max: 5, Seed: 1})
+		if err != nil {
+			return err
+		}
+		start := time.Now()
+		if err := m.Fit(ctx); err != nil {
+			return err
+		}
+		fit := time.Since(start)
+		rep := evaluation.Errors(m, test, nil)
+		_, _ = fmt.Fprintf(w, "\t%s\t%d\t%.4f\t%.4f\t%v\t\n", v, rep.N, rep.RMSE, rep.MAE, fit.Round(time.Millisecond))
+	}
+	return w.Flush()
+}
+
+type constant float64
+
+func (c constant) Predict(recoant.Ref, recoant.Ref) (float64, bool) { return float64(c), true }
 
 // load reads a recoant-data signals file.
 func load(path string) ([]recoant.Signal, error) {

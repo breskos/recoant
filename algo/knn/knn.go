@@ -16,16 +16,16 @@
 package knn
 
 import (
-	"errors"
 	"fmt"
 	"math"
 
+	"github.com/breskos/recoant"
 	"github.com/breskos/recoant/store"
 )
 
 // ErrUnsupported is returned for a request whose direction the model cannot
-// answer, e.g. user-to-user from an item-kNN.
-var ErrUnsupported = errors.New("knn: unsupported request direction")
+// answer, e.g. user-to-user from an item-kNN. It is [recoant.ErrUnsupported].
+var ErrUnsupported = recoant.ErrUnsupported
 
 // Similarity selects how two rows of the interaction matrix are compared.
 type Similarity string

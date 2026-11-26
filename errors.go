@@ -9,4 +9,7 @@ var (
 	ErrInvalidSignal = errors.New("recoant: invalid signal")
 	// ErrInvalidRequest is returned for a request that cannot be answered.
 	ErrInvalidRequest = errors.New("recoant: invalid request")
+	// ErrUnsupported is returned for a request direction a recommender
+	// cannot answer, e.g. user-to-user from an item-based model.
+	ErrUnsupported = errors.New("recoant: unsupported request direction")
 )

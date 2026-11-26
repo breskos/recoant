@@ -14,7 +14,7 @@ A recommendation framework in Go: from streams of user signals to recommendation
 - Many algorithms behind one interface: popularity, neighborhood models, SVD/PCA, matrix factorization (Funk-SVD, SVD++), ALS, BPR, graph walks and hybrids
 - Ranking metrics with temporal splits and prequential evaluation for streams
 
-> **Status:** early design. See the [architecture draft](docs/architecture.md) and the [roadmap](ROADMAP.md).
+> **Status:** in development. Implemented: signals, store, popularity, kNN and latent factor models. Next: negative feedback and star ratings, configuration, attributes, reciprocal user-to-user matching and segments. See the [architecture](docs/architecture.md) and the [roadmap](ROADMAP.md).
 
 ## Install
 
@@ -34,6 +34,10 @@ Requires Go 1.24 or newer.
 | [`sparse`](sparse) | Sparse matrices (CSR) for algorithms |
 | [`algo/popularity`](algo/popularity) | Popularity and trending, online |
 | [`algo/knn`](algo/knn) | Item-kNN and user-kNN, incremental refresh; similar items and user-to-user |
+| [`algo/svd`](algo/svd) | PureSVD and PCA with a randomized truncated SVD |
+| [`algo/mf`](algo/mf) | Funk-SVD, biased MF and SVD++ for ratings (Netflix Prize style) |
+| [`algo/als`](algo/als) | Alternating least squares for implicit feedback |
+| [`algo/bpr`](algo/bpr) | Bayesian personalized ranking |
 | [`evaluation`](evaluation) | Precision, recall, NDCG, MAP, hit rate, MRR, coverage; temporal and leave-last-out splits |
 | [`persist`](persist) | Save and load in JSON or binary |
 
