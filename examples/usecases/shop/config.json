@@ -1,0 +1,33 @@
+{
+  "recoant": 1,
+  "half_life": "30d",
+  "kinds": {
+    "user": {},
+    "product": {
+      "attributes": {
+        "category": {"type": "category"},
+        "price": {"type": "number"}
+      }
+    }
+  },
+  "relations": {
+    "interacts": {"subject": "user", "object": "product"}
+  },
+  "signals": {
+    "view": {"relation": "interacts", "weight": 1},
+    "cart": {"relation": "interacts", "weight": 5},
+    "purchase": {"relation": "interacts", "weight": 10},
+    "stars": {"relation": "interacts", "feedback": "rating", "scale": [1, 5], "neutral": 3, "weight": 2},
+    "return": {"relation": "interacts", "feedback": "negative", "weight": 8}
+  },
+  "models": {
+    "taste": {"algorithm": "als", "relation": "interacts", "params": {"factors": 4, "seed": 1}},
+    "similar": {"algorithm": "item-knn", "relation": "interacts", "params": {"neighbors": 20, "shrink": 5}},
+    "bestsellers": {"algorithm": "popularity", "params": {"half_life": "7d"}}
+  },
+  "serving": {
+    "for_you": {"model": "taste", "exclude_seen": true, "fallback": "bestsellers", "k": 5},
+    "also_bought": {"model": "similar", "target": "product", "k": 4},
+    "bestsellers": {"model": "bestsellers", "target": "product", "k": 5}
+  }
+}

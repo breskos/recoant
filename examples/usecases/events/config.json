@@ -1,0 +1,39 @@
+{
+  "recoant": 1,
+  "kinds": {
+    "user": {
+      "attributes": {
+        "city": {"type": "category"}
+      }
+    },
+    "event": {
+      "attributes": {
+        "topic": {"type": "category"},
+        "city": {"type": "category"},
+        "location": {"type": "geo"},
+        "price": {"type": "number"}
+      }
+    }
+  },
+  "relations": {
+    "attends": {"subject": "user", "object": "event", "half_life": "60d"}
+  },
+  "signals": {
+    "view": {"relation": "attends", "weight": 1},
+    "interested": {"relation": "attends", "weight": 4},
+    "rsvp": {"relation": "attends", "weight": 8},
+    "not_interested": {"relation": "attends", "feedback": "negative", "weight": 10}
+  },
+  "models": {
+    "taste": {"algorithm": "item-knn", "relation": "attends", "params": {"neighbors": 30, "shrink": 2}},
+    "popular": {"algorithm": "popularity", "params": {"half_life": "7d"}}
+  },
+  "serving": {
+    "in_my_city": {
+      "model": "taste", "exclude_seen": true, "fallback": "popular", "k": 4,
+      "filters": [{"attribute": "city", "same": true}]
+    },
+    "anywhere": {"model": "taste", "target": "event", "exclude_seen": true, "fallback": "popular", "k": 4},
+    "popular": {"model": "popular", "target": "event", "k": 4}
+  }
+}

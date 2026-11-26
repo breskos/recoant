@@ -16,6 +16,8 @@ A recommendation framework in Go: from streams of user signals to recommendation
 - Many algorithms behind one interface: popularity, neighborhood models, SVD/PCA, matrix factorization (Funk-SVD, SVD++), ALS, BPR, graph walks and hybrids
 - Ranking metrics with temporal splits and prequential evaluation for streams
 
+**What could you build with it?** Six runnable use cases (online shop, dating, music, recipes, events, job board) show how to model an application with recoant, each in one configuration and about 200 lines of Go: [examples/usecases](examples/usecases).
+
 > **Status:** in development. Implemented: signals with implicit, rating and negative feedback, named relations, configuration, popularity, kNN and latent factor models, attributes with filters (including mutual ones), deletion and retention. Next: reciprocal user-to-user matching and segments. See the [architecture](docs/architecture.md), the [measurements](docs/measurements.md) and the [roadmap](ROADMAP.md).
 
 ## Quality and speed

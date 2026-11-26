@@ -33,6 +33,8 @@ jobs:
             echo "::error::Test coverage ${total}% is below 90%"
             exit 1
           fi
+      - name: Use cases run
+        run: go test ./examples/usecases/...
 
   lint:
     runs-on: ubuntu-latest
