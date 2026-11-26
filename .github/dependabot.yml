@@ -1,10 +1,24 @@
 version: 2
 updates:
+  # recoant uses only the standard library; this entry stays so that a
+  # dependency added later is watched without further setup.
   - package-ecosystem: gomod
     directory: /
     schedule:
-      interval: weekly
+      interval: monthly
+    commit-message:
+      prefix: ":arrow_up:"
+    groups:
+      go-modules:
+        patterns: ["*"]
+
+  # The actual work: keep CI actions current, one grouped PR per month.
   - package-ecosystem: github-actions
     directory: /
     schedule:
-      interval: weekly
+      interval: monthly
+    commit-message:
+      prefix: ":arrow_up:"
+    groups:
+      github-actions:
+        patterns: ["*"]
