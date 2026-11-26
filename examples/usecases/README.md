@@ -43,7 +43,8 @@ Each README explains the configuration of its use case, the design decisions wor
 | old behaviour to fade | `half_life` per relation and channel | dating, music, recipes, jobs |
 | a fixed rule for everybody | `filters` in the configuration | dating, recipes, events, jobs |
 | a filter from the UI | `recoant.Condition` in the request | shop, dating, music, recipes, events |
-| both sides to agree | `within` + `mutual` | dating |
+| a match both sides want | `matching`: `reciprocal`, `exposure_balancing` | dating, jobs |
+| both sides' hard preferences to fit | `within` + `mutual` | dating |
 | the same city or a shared skill | `same` | events, jobs |
 | distance | `max_distance_km`, `near` | dating, events, jobs |
 | two directions (A → B and B → A) | two relations | jobs |

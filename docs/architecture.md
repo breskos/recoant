@@ -1,6 +1,6 @@
 # Architecture
 
-*State: draft. Implemented: core types, signal model, store, popularity, evaluation and persistence (v0.1), neighborhood models (v0.2), latent factor models (v0.3), signals 2.0 and the configuration (v0.4), attributes, filters, deletion and retention (v0.5). Roles and matching and segments are the design for the next versions; see the [roadmap](../ROADMAP.md).*
+*State: draft. Implemented: core types, signal model, store, popularity, evaluation and persistence (v0.1), neighborhood models (v0.2), latent factor models (v0.3), signals 2.0 and the configuration (v0.4), attributes, filters, deletion and retention (v0.5), roles, reciprocal matching and collective factorization (v0.6). Segments are the design for the next version; see the [roadmap](../ROADMAP.md).*
 
 recoant is a framework for recommendation engines in Go. It takes a stream of
 signals between anonymized users and entities — visits, clicks, dwell time,
@@ -147,7 +147,7 @@ relations by the models.
 
 ## Roles: taste and appearance
 
-*Planned for v0.6.*
+*Implemented in v0.6 (package `match`, `als.Config.Shared`).*
 
 Every entity can appear as subject and as object of a relation. A latent
 factor model of a relation learns one vector per role:
@@ -162,7 +162,13 @@ exactly the dating case: whom I like vs. who likes people like me.
 **Shared vectors across relations.** With collective factorization, a user
 has one taste vector that learns from all its relations as subject (e.g.
 `buys` and `likes`), so behavior in one relation informs the other, and
-users who like the same items become comparable (user → item ← user).
+users who like the same items become comparable (user → item ← user). In recoant, ALS takes
+`shared` relations: their signals train the subject vectors too, and
+recommendations are made for the model's own relation.
+
+Every factor model (ALS, BPR, the MF variants, PureSVD) exposes both roles
+through `Interest(subjects, object)`: the subjects' taste vectors times the
+object's appearance vector. That is the reverse direction of matching.
 
 **Reciprocal matching.** For relations where both sides must agree, a
 reciprocal recommender combines both directions:
@@ -179,7 +185,18 @@ matching), geometric mean, minimum or product. Further settings:
 - a minimum for each direction,
 - **exposure balancing**: very popular profiles are recommended less often,
   so that attention is spread and more mutual matches happen,
-- exclusion of pairs where either side already passed.
+- exclusion of pairs where either side already passed,
+- a calibration of the scores to [0, 1] before combining: `clamp` for ALS,
+  `sigmoid` for BPR and MF,
+- for relations between different kinds (candidate → job), a
+  `reverse_model` of the reverse relation (job → candidate) scores the
+  other direction.
+
+The forward model proposes a pool of candidates (default 20·k, at least
+200), with all filters and exclusions of the request; the reverse direction
+is scored for the pool only. Exposure balancing divides by
+`(1 + n/n̄)^β`, where `n` counts the subjects with a positive preference for
+the candidate. Measured effect: [measurements](measurements.md#matchingdating--reciprocal-matching).
 
 ## Attributes
 
@@ -282,9 +299,10 @@ Planned additions: the relation to use (by name) and the reciprocity mode.
 ## Configuration
 
 *Implemented in v0.4 for kinds, relations, signals, models and serving, in
-v0.5 for attributes, serving filters and privacy; every later version
-extends the schema. Sections of later versions (matching, segments) are
-rejected with the version that introduces them.*
+v0.5 for attributes, serving filters and privacy, in v0.6 for matching and
+shared relations; every later version extends the schema. Sections of
+later versions (segments) are rejected with the version that introduces
+them.*
 
 The modeling of an application lives in one configuration file. JSON,
 because recoant uses the standard library only; the schema is versioned and
@@ -296,7 +314,7 @@ validated on load with error messages that point to the offending field.
 | `relations` | named relations between kinds, their channels, aggregation and half-life |
 | `signals` | per signal type: relation, feedback kind, channel, weight, transform, scale |
 | `models` | which algorithms run on which relations with which parameters |
-| `matching` | one-way or reciprocal per relation, combination, minimums, exposure balancing |
+| `matching` | one-way or reciprocal per relation, combination, calibration, minimum per direction, exposure balancing, candidate pool, reverse model |
 | `serving` | defaults per request type: exclude seen, exclude rejected, filters, fallback model |
 | `segments` | clustering: which kind, features, number of segments |
 | `privacy` | retention per relation, deletion of attributes with the entity, export of sensitive attributes |
@@ -349,8 +367,8 @@ in v0.4):
 
 ### Example: dating
 
-The target configuration; `matching` and `segments` arrive with v0.6 and
-v0.7. The part that works in v0.5 — attributes, mutual age preferences,
+The target configuration; `segments` arrives with v0.7. The part that
+works in v0.6 — attributes, reciprocal matching, mutual age preferences,
 distance filter and privacy — is in
 [examples/config/people.json](../examples/config/people.json).
 
@@ -388,7 +406,7 @@ distance filter and privacy — is in
   },
   "serving": {
     "matches": {
-      "model": "attraction", "target": "user", "exclude_seen": true, "exclude_rejected": true,
+      "model": "attraction", "target": "user", "exclude_seen": true,
       "filters": [
         {"attribute": "age", "within": ["min_age", "max_age"], "mutual": true},
         {"attribute": "location", "max_distance_km": 50}
@@ -412,8 +430,8 @@ configuration builds the same objects.
 | Baselines | popularity, trending | v0.1 |
 | Neighborhood | item-kNN, user-kNN (cosine, Jaccard, adjusted cosine) | v0.2 |
 | Latent factors | PureSVD/PCA (randomized SVD), Funk-SVD, biased MF, SVD++, ALS, BPR | v0.3 |
-| Reciprocal | reciprocal combination of two directions, exposure balancing | v0.6 |
-| Collective | shared subject vectors across relations | v0.6 |
+| Reciprocal | reciprocal combination of two directions, exposure balancing | ✓ |
+| Collective | shared subject vectors across relations (ALS) | ✓ |
 | Segments | k-means, mini-batch k-means | v0.7 |
 | Feature-based | factorization machines / LightFM-style with attributes (cold start) | v0.10 |
 | Graph | P3α, RP3β, personalized PageRank | v0.11 |
@@ -430,7 +448,7 @@ configuration builds the same objects.
 | `sparse` | Sparse matrices | ✓ |
 | `config` | Loading and validating the configuration, building the objects | ✓ |
 | `attr` | Attribute schemas, store and filters | ✓ |
-| `match` | Reciprocal recommendation and exposure balancing | v0.6 |
+| `match` | Reciprocal recommendation and exposure balancing | ✓ |
 | `segment` | Clustering, segment and entity profiles | v0.7 |
 | `stream` | Ingest, sessions, windows, online/incremental pipeline | v0.8 |
 | `funnel` | Funnel stages, rates, learned signal relevance | v0.9 |

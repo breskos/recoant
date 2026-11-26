@@ -141,7 +141,6 @@ func TestValidate(t *testing.T) {
 	cases := map[string]struct{ json, want string }{
 		"version":       {`{"recoant": 2, ` + base + `}`, "recoant: version"},
 		"unknown field": {`{"recoant": 1, "colour": 1, ` + base + `}`, "unknown field"},
-		"matching":      {`{"recoant": 1, "matching": {}, ` + base + `}`, "matching: supported from v0.6"},
 		"segments":      {`{"recoant": 1, "segments": {}, ` + base + `}`, "segments: supported from v0.7"},
 		"retention":     {`{"recoant": 1, "privacy": {"retention": {"x": "1d"}}, ` + base + `}`, "privacy.retention.x: unknown relation"},
 		"no kinds":      {`{"recoant": 1}`, "kinds: at least one"},

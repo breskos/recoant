@@ -19,6 +19,7 @@ package als
 import (
 	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"math/rand/v2"
@@ -50,6 +51,13 @@ type Config struct {
 	Seed uint64 `json:"seed,omitempty"`
 	// Workers is the number of parallel workers; default the number of CPUs.
 	Workers int `json:"workers,omitempty"`
+	// Shared lists further relations with the same subject kind whose
+	// signals also train the subject vectors (collective factorization):
+	// a user's taste learns from likes and purchases alike. Recommendations
+	// are made for Relation only. With Shared, Refresh fits.
+	Shared []store.Relation `json:"shared,omitempty"`
+	// SharedWeight scales the strengths of the shared relations; default 1.
+	SharedWeight float64 `json:"shared_weight,omitempty"`
 }
 
 // ALS is an implicit-feedback factorization. It is safe for concurrent use.
@@ -58,12 +66,21 @@ type ALS struct {
 	cfg   Config
 
 	mu        sync.RWMutex
-	x, y      *embed.Matrix // subject and object vectors
-	yty       []float64     // Yᵀ·Y, k×k
+	x, y      *embed.Matrix // subject and object vectors (y of Relation)
+	all       *embed.Matrix // object vectors of Relation and Shared, stacked
+	yty       []float64     // Yᵀ·Y of all, k×k
 	userNorms []float64
+	blocks    []block // column blocks of Relation and Shared in all
 	seq       uint64
 	fitTime   time.Time
 	fitted    bool
+}
+
+// block is the place of a relation's objects in the stacked object vectors.
+type block struct {
+	rel          store.Relation
+	offset, cols uint32
+	scale        float32
 }
 
 // New returns an untrained model that learns from s.
@@ -75,9 +92,15 @@ func New(s *store.Store, cfg Config) (*ALS, error) {
 	cfg.Iterations = cmp.Or(cfg.Iterations, 10)
 	cfg.Reg = cmp.Or(cfg.Reg, 0.1)
 	cfg.Alpha = cmp.Or(cfg.Alpha, 1)
+	cfg.SharedWeight = cmp.Or(cfg.SharedWeight, 1)
 	if cfg.Factors < 0 || cfg.Iterations < 0 || cfg.Workers < 0 || !(cfg.Reg > 0) || !(cfg.Alpha > 0) ||
-		math.IsInf(cfg.Reg, 0) || math.IsInf(cfg.Alpha, 0) {
+		!(cfg.SharedWeight > 0) || math.IsInf(cfg.Reg, 0) || math.IsInf(cfg.Alpha, 0) || math.IsInf(cfg.SharedWeight, 0) {
 		return nil, fmt.Errorf("als: invalid parameter in %+v", cfg)
+	}
+	for _, r := range cfg.Shared {
+		if r.Subject != cfg.Relation.Subject || r.Object == "" || r == cfg.Relation {
+			return nil, fmt.Errorf("als: shared relation %q must differ from %q and have its subject kind", r, cfg.Relation)
+		}
 	}
 	return &ALS{store: s, cfg: cfg}, nil
 }
@@ -189,7 +212,7 @@ func (m *ALS) solveRows(ctx context.Context, rows []uint32, r *sparse.CSR, f, ou
 func (m *ALS) Fit(ctx context.Context) error {
 	seq := m.store.Seq()
 	now := m.store.Stats().Latest
-	r, err := m.store.Matrix(m.cfg.Relation, now)
+	r, blocks, err := m.matrix(now)
 	if err != nil {
 		return err
 	}
@@ -197,12 +220,12 @@ func (m *ALS) Fit(ctx context.Context) error {
 	rng := rand.New(rand.NewPCG(m.cfg.Seed, m.cfg.Seed^0x1b873593))
 	k := m.cfg.Factors
 	x := embed.Random(rng, r.Rows, k, 0.01)
-	y := embed.Random(rng, r.Cols, k, 0.01)
+	all := embed.Random(rng, r.Cols, k, 0.01)
 	for range m.cfg.Iterations {
-		if err := m.solveRows(ctx, nil, r, y, x); err != nil {
+		if err := m.solveRows(ctx, nil, r, all, x); err != nil {
 			return err
 		}
-		if err := m.solveRows(ctx, nil, rt, x, y); err != nil {
+		if err := m.solveRows(ctx, nil, rt, x, all); err != nil {
 			return err
 		}
 	}
@@ -211,9 +234,51 @@ func (m *ALS) Fit(ctx context.Context) error {
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.x, m.y, m.yty, m.userNorms = x, y, gram(y), x.Norms()
+	m.x, m.all, m.blocks, m.yty, m.userNorms = x, all, blocks, gram(all), x.Norms()
+	m.y = &embed.Matrix{N: int(blocks[0].cols), K: k, Data: all.Data[:int(blocks[0].cols)*k]}
 	m.seq, m.fitTime, m.fitted = seq, now, true
 	return nil
+}
+
+// matrix returns the strengths of Relation and, side by side, of the
+// shared relations, and the column blocks. Shared relations without
+// signals yet are left out.
+func (m *ALS) matrix(now time.Time) (*sparse.CSR, []block, error) {
+	r, err := m.store.Matrix(m.cfg.Relation, now)
+	if err != nil {
+		return nil, nil, err
+	}
+	blocks := []block{{rel: m.cfg.Relation, cols: uint32(r.Cols), scale: 1}}
+	if len(m.cfg.Shared) == 0 {
+		return r, blocks, nil
+	}
+	parts := []*sparse.CSR{r}
+	rows, cols := r.Rows, r.Cols
+	for _, rel := range m.cfg.Shared {
+		s, err := m.store.Matrix(rel, now)
+		if errors.Is(err, store.ErrUnknownRelation) {
+			continue
+		}
+		if err != nil {
+			return nil, nil, err
+		}
+		blocks = append(blocks, block{rel: rel, offset: uint32(cols), cols: uint32(s.Cols), scale: float32(m.cfg.SharedWeight)})
+		parts = append(parts, s)
+		rows, cols = max(rows, s.Rows), cols+s.Cols
+	}
+	entries := make([][]sparse.Entry, rows)
+	for i := range entries {
+		for b, p := range parts {
+			if i >= p.Rows {
+				continue
+			}
+			idx, vals := p.Row(i)
+			for n, j := range idx {
+				entries[i] = append(entries[i], sparse.Entry{Col: blocks[b].offset + j, Val: blocks[b].scale * vals[n]})
+			}
+		}
+	}
+	return sparse.FromRows(entries, rows, cols, 1), blocks, nil
 }
 
 // Refresh re-solves the subjects and objects that changed in the store
@@ -223,7 +288,7 @@ func (m *ALS) Refresh(ctx context.Context) error {
 	m.mu.RLock()
 	fitted, since := m.fitted, m.seq
 	m.mu.RUnlock()
-	if !fitted {
+	if !fitted || len(m.cfg.Shared) > 0 {
 		return m.Fit(ctx)
 	}
 	subjects, objects := m.store.Changes(m.cfg.Relation, since)
@@ -250,24 +315,34 @@ func (m *ALS) Refresh(ctx context.Context) error {
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.x, m.y, m.yty, m.userNorms = x, y, gram(y), x.Norms()
+	m.x, m.y, m.all, m.yty, m.userNorms = x, y, y, gram(y), x.Norms()
+	m.blocks = []block{{rel: m.cfg.Relation, cols: uint32(r.Cols), scale: 1}}
 	m.seq, m.fitTime = seq, now
 	return nil
 }
 
 // userVector folds a subject in from its history with the object vectors
-// fixed: the same solve as in training.
-func (m *ALS) userVector(_ uint32, history []sparse.Entry) ([]float64, bool) {
-	if len(history) == 0 {
+// fixed: the same solve as in training. With shared relations, the
+// subject's rows in them count too.
+func (m *ALS) userVector(si uint32, history []sparse.Entry) ([]float64, bool) {
+	var idx []uint32
+	var vals []float32
+	for b, blk := range m.blocks {
+		row := history
+		if b > 0 {
+			row = m.store.Row(blk.rel, si, m.fitTime)
+		}
+		for _, e := range row {
+			if e.Col < blk.cols {
+				idx, vals = append(idx, blk.offset+e.Col), append(vals, blk.scale*e.Val)
+			}
+		}
+	}
+	if len(idx) == 0 {
 		return nil, false
 	}
-	idx := make([]uint32, len(history))
-	vals := make([]float32, len(history))
-	for n, e := range history {
-		idx[n], vals[n] = e.Col, e.Val
-	}
 	u := make([]float64, m.cfg.Factors)
-	newSolver(m.cfg.Factors, m.cfg.Reg, m.cfg.Alpha, m.y, m.yty).solve(idx, vals, u)
+	newSolver(m.cfg.Factors, m.cfg.Reg, m.cfg.Alpha, m.all, m.yty).solve(idx, vals, u)
 	return u, true
 }
 
@@ -276,9 +351,23 @@ func (m *ALS) userVector(_ uint32, history []sparse.Entry) ([]float64, bool) {
 func (m *ALS) Recommend(ctx context.Context, req recoant.Request) ([]recoant.Scored, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
+	return factor.Recommend(ctx, m.view(), req)
+}
+
+// Interest returns the predicted interest of every subject in the object,
+// from the subjects' trained vectors; NaN where a vector is missing. It
+// scores the reverse direction of reciprocal matching.
+func (m *ALS) Interest(subjects []recoant.Ref, object recoant.Ref) []float64 {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return factor.Interest(m.view(), subjects, object)
+}
+
+// view returns a snapshot of the model; the caller holds m.mu.
+func (m *ALS) view() factor.View {
 	v := factor.View{Store: m.store, Rel: m.cfg.Relation, UserVector: m.userVector, HistoryTime: m.fitTime}
 	if m.fitted {
 		v.Items, v.Users, v.UserNorms = m.y, m.x, m.userNorms
 	}
-	return factor.Recommend(ctx, v, req)
+	return v
 }

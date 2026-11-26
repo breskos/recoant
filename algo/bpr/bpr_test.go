@@ -27,6 +27,7 @@ func TestBPR(t *testing.T) {
 		t.Fatal(err)
 	}
 	testfix.CheckGroups(t, m, true)
+	testfix.CheckInterest(t, m)
 	_ = s.Add(testfix.Sig("new", "x", recoant.Purchase, 1))
 	if res, _ := m.Recommend(ctx, recoant.Request{Subject: recoant.U("new"), Target: "product", K: 1}); res != nil {
 		t.Errorf("subject not in Fit: %v", res)

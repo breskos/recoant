@@ -27,6 +27,7 @@ func TestALS(t *testing.T) {
 		t.Fatal(err)
 	}
 	testfix.CheckGroups(t, m, true)
+	testfix.CheckInterest(t, m)
 }
 
 // New signals change the recommendations at once (fold-in) and Refresh
@@ -131,5 +132,62 @@ func TestFoldInEdgeCases(t *testing.T) {
 	_ = s.Add(recoant.Signal{Subject: recoant.U("cinephile"), Object: recoant.Ref{Kind: "movie", ID: "m"}, Type: recoant.Click, Value: 1, Time: testfix.T0})
 	if res, err := m.Recommend(ctx, recoant.Request{Subject: recoant.U("cinephile"), Target: "product", K: 2}); err != nil || res != nil {
 		t.Errorf("subject without history: %v %v", res, err)
+	}
+}
+
+// Collective factorization: n bought group A products but liked nobody
+// yet. With the purchases shared, ALS on likes recommends group A people.
+func TestShared(t *testing.T) {
+	sigs := append([]recoant.Signal(nil), testfix.Groups...)
+	for _, g := range [][]string{{"u1", "u2", "u3"}, {"u4", "u5", "u6"}} {
+		for _, a := range g {
+			for _, b := range g {
+				if a != b {
+					sigs = append(sigs, recoant.Signal{Subject: recoant.U(a), Object: recoant.U(b), Type: recoant.Purchase, Value: 1, Time: testfix.T0})
+				}
+			}
+		}
+	}
+	sigs = append(sigs, testfix.Sig("n", "a", recoant.Purchase, 1), testfix.Sig("n", "b", recoant.Purchase, 1))
+	s := testfix.Store(t, sigs)
+	people := store.Relation{Subject: recoant.User, Object: recoant.User}
+	jobs := store.Relation{Subject: recoant.User, Object: "job"} // no signals yet
+	req := recoant.Request{Subject: recoant.U("n"), Target: recoant.User, K: 2, ExcludeSeen: true}
+	plain, _ := als.New(s, als.Config{Relation: people, Factors: 4, Seed: 1})
+	if err := plain.Fit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if res, _ := plain.Recommend(ctx, req); len(res) != 0 {
+		t.Errorf("without shared: %v", res)
+	}
+	m, err := als.New(s, als.Config{Relation: people, Shared: []store.Relation{testfix.Rel, jobs}, SharedWeight: 2, Factors: 4, Seed: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, fit := range []func(context.Context) error{m.Fit, m.Refresh} {
+		if err := fit(ctx); err != nil {
+			t.Fatal(err)
+		}
+		res, err := m.Recommend(ctx, req)
+		if err != nil || len(res) != 2 {
+			t.Fatalf("with shared: %v %v", res, err)
+		}
+		for _, x := range res {
+			if x.Ref.ID > "u3" {
+				t.Errorf("with shared: %v, want group A", testfix.IDs(res))
+			}
+		}
+	}
+	if in := m.Interest([]recoant.Ref{recoant.U("u2"), recoant.U("u5")}, recoant.U("u1")); !(in[0] > in[1]) {
+		t.Errorf("interest in u1: %v", in)
+	}
+	for name, cfg := range map[string]als.Config{
+		"own relation": {Relation: people, Shared: []store.Relation{people}},
+		"other kind":   {Relation: people, Shared: []store.Relation{{Subject: "product", Object: recoant.User}}},
+		"weight":       {Relation: people, Shared: []store.Relation{testfix.Rel}, SharedWeight: -1},
+	} {
+		if _, err := als.New(s, cfg); err == nil {
+			t.Errorf("%s accepted", name)
+		}
 	}
 }

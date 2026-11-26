@@ -101,6 +101,9 @@ func TestVariants(t *testing.T) {
 			if got := testfix.IDs(res); len(got) != 1 || got[0][0] != 'r' {
 				t.Errorf("similar to r1: %v", got)
 			}
+			if in := m.Interest([]recoant.Ref{recoant.U("r1"), recoant.U("s1")}, testfix.P("g0")); !(in[0] > in[1]) {
+				t.Errorf("interest in g0: %v", in)
+			}
 			// Unknown subject and object fall back to mean and biases.
 			if p, ok := m.Predict(recoant.U("nobody"), testfix.P("nothing")); !ok || p < 1 || p > 5 {
 				t.Errorf("fallback %v %v", p, ok)

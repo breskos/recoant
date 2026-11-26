@@ -5,6 +5,7 @@ package factor
 
 import (
 	"context"
+	"math"
 	"time"
 
 	"github.com/breskos/recoant"
@@ -79,4 +80,35 @@ func Recommend(ctx context.Context, v View, req recoant.Request) ([]recoant.Scor
 		v.Items.Score(u, v.ItemBias, recutil.Admit(v.Store, req, history), tk)
 	}
 	return recutil.Results(v.Store, req.Target, tk.Sorted()), nil
+}
+
+// Interest returns the predicted interest of every subject in the object:
+// the subject's trained vector (taste) times the object's vector
+// (appearance) plus the object's bias. Entries are NaN for subjects or an
+// object without a vector, and for references of other kinds.
+func Interest(v View, subjects []recoant.Ref, object recoant.Ref) []float64 {
+	out := make([]float64, len(subjects))
+	for i := range out {
+		out[i] = math.NaN()
+	}
+	if v.Items == nil || v.Users == nil || object.Kind != v.Rel.Object {
+		return out
+	}
+	oj, ok := v.Store.Index(object)
+	if !ok || int(oj) >= v.Items.N {
+		return out
+	}
+	y, bias := v.Items.Row(int(oj)), 0.0
+	if v.ItemBias != nil {
+		bias = v.ItemBias[oj]
+	}
+	for i, s := range subjects {
+		if s.Kind != v.Rel.Subject {
+			continue
+		}
+		if si, ok := v.Store.Index(s); ok && int(si) < v.Users.N {
+			out[i] = linalg.Dot(v.Users.Row(int(si)), y) + bias
+		}
+	}
+	return out
 }

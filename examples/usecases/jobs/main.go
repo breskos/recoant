@@ -145,6 +145,10 @@ func run() error {
 			return err
 		}
 	}
+	// The recruiter of the backend job shortlisted her.
+	if err := add(jobRef("ber-engineering-0"), lena, "shortlist", now.Add(time.Hour)); err != nil {
+		return err
+	}
 
 	if err := engine.Fit(ctx); err != nil {
 		return err

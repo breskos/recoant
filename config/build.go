@@ -155,6 +155,10 @@ func (c *Config) buildModel(name string, s *store.Store, sm signal.Model) (Train
 			return fail(err)
 		}
 		cfg.Relation = rel
+		cfg.Shared = nil
+		for _, name := range d.Shared {
+			cfg.Shared = append(cfg.Shared, c.Relation(name))
+		}
 		m, err := als.New(s, cfg)
 		if err != nil {
 			return fail(err)

@@ -3,6 +3,7 @@ package factor_test
 import (
 	"context"
 	"errors"
+	"math"
 	"testing"
 
 	"github.com/breskos/recoant"
@@ -99,4 +100,28 @@ type recommender factor.View
 
 func (r recommender) Recommend(ctx context.Context, req recoant.Request) ([]recoant.Scored, error) {
 	return factor.Recommend(ctx, factor.View(r), req)
+}
+
+func TestInterest(t *testing.T) {
+	v := view(t)
+	v.ItemBias = make([]float64, v.Items.N)
+	testfix.CheckInterest(t, scorer(v))
+	_ = v.Store.Add(testfix.Sig("u1", "late", recoant.Visit, 1)) // object without vector
+	_ = v.Store.Add(testfix.Sig("late-user", "a", recoant.Visit, 1))
+	if got := factor.Interest(v, []recoant.Ref{recoant.U("u1")}, testfix.P("late")); !math.IsNaN(got[0]) {
+		t.Errorf("object without vector: %v", got)
+	}
+	if got := factor.Interest(v, []recoant.Ref{recoant.U("late-user")}, testfix.P("a")); !math.IsNaN(got[0]) {
+		t.Errorf("subject without vector: %v", got)
+	}
+	v.Users = nil
+	if got := factor.Interest(v, []recoant.Ref{recoant.U("u1")}, testfix.P("a")); !math.IsNaN(got[0]) {
+		t.Errorf("no subject vectors: %v", got)
+	}
+}
+
+type scorer factor.View
+
+func (s scorer) Interest(subjects []recoant.Ref, object recoant.Ref) []float64 {
+	return factor.Interest(factor.View(s), subjects, object)
 }
