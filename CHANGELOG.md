@@ -4,6 +4,10 @@ All notable changes to this project are documented in this file. The format foll
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-26
+
+Reciprocal matching, roles and collective factorization.
+
 ### Added
 - **`match` package**: `match.Reciprocal` recommends pairs where both sides must agree. The forward direction comes from any recommender, the reverse from a `match.Scorer`; both are calibrated to [0, 1] (`clamp` or `sigmoid`) and combined with a harmonic or geometric mean, the minimum or the product, with a minimum per direction. Candidates who rejected the subject are left out, and exposure balancing divides by `(1 + n/n̄)^β` so that popular profiles are recommended less often.
 - **Roles**: every factor model (ALS, BPR, MF variants, PureSVD) has `Interest(subjects, object)`, the subjects' taste vectors times the object's appearance vector, which scores the reverse direction.
@@ -110,7 +114,8 @@ Core data model and baselines.
 - `persist`: save and load stores, signal models and popularity models in JSON or binary, detected on load, written atomically.
 - Project setup: module, CI (vet, race tests, coverage gate, golangci-lint), contribution guidelines and templates.
 
-[Unreleased]: https://github.com/breskos/recoant/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/breskos/recoant/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/breskos/recoant/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/breskos/recoant/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/breskos/recoant/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/breskos/recoant/compare/v0.2.0...v0.3.0

@@ -15,7 +15,7 @@ Until v1.0.0 minor versions may change the API; every breaking change is listed 
 | v0.3.0 | Latent factors: SVD/PCA, MF, SVD++, ALS, BPR | released |
 | v0.4.0 | Signals 2.0 and configuration | released |
 | v0.5.0 | Attributes | released |
-| v0.6.0 | User-to-user: roles and reciprocal matching | in progress |
+| v0.6.0 | User-to-user: roles and reciprocal matching | released |
 | v0.7.0 | Segments and profiles | planned |
 | v0.8.0 | Streaming: online and incremental learning | planned |
 | v0.9.0 | Funnels and learned signal relevance | planned |
