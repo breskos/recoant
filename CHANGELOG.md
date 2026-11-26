@@ -4,6 +4,9 @@ All notable changes to this project are documented in this file. The format foll
 
 ## [Unreleased]
 
+### Added
+- **Use cases** in `examples/usecases`: six runnable stories (online shop, dating, music, recipes, events, job board), each with a configuration and a README that explains how to model the application and which design decisions to copy; a gallery page maps "I want …" to features. CI runs them.
+
 ## [0.5.0] - 2026-11-26
 
 Attributes.

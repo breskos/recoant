@@ -1,0 +1,58 @@
+{
+  "recoant": 1,
+  "half_life": "45d",
+  "kinds": {
+    "user": {
+      "attributes": {
+        "skills": {"type": "set"},
+        "location": {"type": "geo", "sensitive": true},
+        "min_salary": {"type": "number", "sensitive": true},
+        "max_salary": {"type": "number", "sensitive": true}
+      }
+    },
+    "job": {
+      "attributes": {
+        "skills": {"type": "set"},
+        "location": {"type": "geo"},
+        "salary": {"type": "number"}
+      }
+    }
+  },
+  "relations": {
+    "applies": {"subject": "user", "object": "job"},
+    "recruits": {"subject": "job", "object": "user"}
+  },
+  "signals": {
+    "view": {"relation": "applies", "weight": 1},
+    "save": {"relation": "applies", "weight": 4},
+    "apply": {"relation": "applies", "weight": 10},
+    "dismiss": {"relation": "applies", "feedback": "negative", "weight": 10},
+    "shortlist": {"relation": "recruits", "weight": 5},
+    "interview": {"relation": "recruits", "weight": 10},
+    "decline": {"relation": "recruits", "feedback": "negative", "weight": 10}
+  },
+  "models": {
+    "jobs": {"algorithm": "als", "relation": "applies", "params": {"factors": 4, "seed": 1}},
+    "similar_jobs": {"algorithm": "item-knn", "relation": "applies", "params": {"neighbors": 20}},
+    "candidates": {"algorithm": "user-knn", "relation": "recruits", "params": {"neighbors": 20}},
+    "new_jobs": {"algorithm": "popularity", "relation": "applies"}
+  },
+  "serving": {
+    "jobs_for_you": {
+      "model": "jobs", "exclude_seen": true, "fallback": "new_jobs", "k": 4,
+      "filters": [
+        {"attribute": "skills", "same": true},
+        {"attribute": "location", "max_distance_km": 30},
+        {"attribute": "salary", "within": ["min_salary", "max_salary"]}
+      ]
+    },
+    "similar_jobs": {"model": "similar_jobs", "target": "job", "k": 3},
+    "candidates_for_job": {
+      "model": "candidates", "target": "user", "exclude_seen": true, "k": 4,
+      "filters": [
+        {"attribute": "skills", "same": true},
+        {"attribute": "location", "max_distance_km": 30}
+      ]
+    }
+  }
+}
