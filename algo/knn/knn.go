@@ -33,9 +33,11 @@ type Similarity string
 // Similarities.
 const (
 	// Cosine compares the interaction strengths: a·b / (|a|·|b| + Shrink).
-	// It is the default.
+	// Negative feedback has a negative strength, so subjects who agree in
+	// what they reject become similar too. It is the default.
 	Cosine Similarity = "cosine"
-	// Jaccard compares only who interacted: |a ∩ b| / (|a ∪ b| + Shrink).
+	// Jaccard compares only who interacted positively:
+	// |a ∩ b| / (|a ∪ b| + Shrink). Negative interactions are ignored.
 	Jaccard Similarity = "jaccard"
 	// AdjustedCosine is Cosine after subtracting each subject's mean
 	// strength. It suits explicit ratings, where a 2 is a negative signal.

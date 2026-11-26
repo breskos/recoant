@@ -24,6 +24,19 @@ func TestAddGet(t *testing.T) {
 	}
 }
 
+func TestSetMax(t *testing.T) {
+	var row []sparse.Entry
+	row = sparse.Set(row, 4, 2)
+	row = sparse.Set(row, 4, 1)
+	row = sparse.Max(row, 4, 0.5)
+	row = sparse.Max(row, 2, 3)
+	row = sparse.Max(row, 2, 5)
+	want := []sparse.Entry{{2, 5}, {4, 1}}
+	if !slices.Equal(row, want) {
+		t.Fatalf("row = %v, want %v", row, want)
+	}
+}
+
 func TestCSR(t *testing.T) {
 	// 3×4 matrix:
 	// [1 0 2 0]

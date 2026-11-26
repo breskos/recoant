@@ -1,0 +1,38 @@
+{
+  "recoant": 1,
+  "half_life": "30d",
+  "kinds": {
+    "user": {},
+    "product": {
+      "attributes": {
+        "category": {"type": "category"},
+        "brand": {"type": "category"},
+        "price": {"type": "number"}
+      }
+    }
+  },
+  "relations": {
+    "interacts": {"subject": "user", "object": "product"}
+  },
+  "signals": {
+    "visit": {"relation": "interacts", "weight": 1},
+    "click": {"relation": "interacts", "weight": 2},
+    "dwell": {"relation": "interacts", "weight": 3, "transform": {"kind": "saturate", "param": 60}},
+    "cart": {"relation": "interacts", "weight": 5},
+    "purchase": {"relation": "interacts", "weight": 10},
+    "stars": {"relation": "interacts", "feedback": "rating", "scale": [1, 5], "neutral": 3, "weight": 2},
+    "return": {"relation": "interacts", "feedback": "negative", "weight": 8},
+    "hide": {"relation": "interacts", "feedback": "negative", "weight": 20}
+  },
+  "models": {
+    "main": {"algorithm": "als", "relation": "interacts", "params": {"factors": 64, "seed": 1}},
+    "similar": {"algorithm": "item-knn", "relation": "interacts", "params": {"shrink": 10}},
+    "ratings": {"algorithm": "svd++", "relation": "interacts", "channel": "rating", "params": {"factors": 16, "seed": 1}},
+    "trending": {"algorithm": "popularity", "params": {"half_life": "2d"}}
+  },
+  "serving": {
+    "for_you": {"model": "main", "exclude_seen": true, "fallback": "trending", "k": 20},
+    "similar": {"model": "similar", "k": 10},
+    "top": {"model": "trending", "target": "product"}
+  }
+}

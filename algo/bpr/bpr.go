@@ -1,10 +1,12 @@
 // Package bpr implements Bayesian personalized ranking with matrix
 // factorization (Rendle et al., 2009) for implicit feedback.
 //
-// BPR learns to rank: for a subject u, an object i it interacted with and a
-// random object j it did not, it pushes the score of i above the score of
-// j. Scores are b_i + p_u·q_i. Training is stochastic gradient descent over
-// sampled triples.
+// BPR learns to rank: for a subject u, an object i it likes (positive
+// preference) and an object j it does not, it pushes the score of i above
+// the score of j. j is an object u rejected (negative preference) in half of
+// the samples if u rejected any — a hard negative — and a random object
+// without positive preference otherwise. Scores are b_i + p_u·q_i.
+// Training is stochastic gradient descent over sampled triples.
 package bpr
 
 import (
@@ -84,11 +86,19 @@ func (m *BPR) Fit(ctx context.Context) error {
 	p := embed.Random(rng, r.Rows, cfg.Factors, 0.1)
 	q := embed.Random(rng, r.Cols, cfg.Factors, 0.1)
 	bias := make([]float64, r.Cols)
-	// rowOf maps an interaction number to its subject.
+	// positives lists the positive entries; negatives the rejected objects
+	// of each subject.
+	var positives []int
 	rowOf := make([]int32, r.NNZ())
+	negatives := make([][]uint32, r.Rows)
 	for u := range r.Rows {
 		for k := r.Indptr[u]; k < r.Indptr[u+1]; k++ {
 			rowOf[k] = int32(u)
+			if r.Values[k] > 0 {
+				positives = append(positives, k)
+			} else if r.Values[k] < 0 {
+				negatives[u] = append(negatives[u], r.Indices[k])
+			}
 		}
 	}
 	lr, reg := cfg.LearnRate, cfg.Reg
@@ -96,20 +106,21 @@ func (m *BPR) Fit(ctx context.Context) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		for range r.NNZ() {
-			e := rng.IntN(r.NNZ())
+		for range positives {
+			e := positives[rng.IntN(len(positives))]
 			u := int(rowOf[e])
 			i := int(r.Indices[e])
-			idx, _ := r.Row(u)
-			if len(idx) >= r.Cols {
-				continue // no negative object
-			}
-			j := rng.IntN(r.Cols)
-			for tries := 0; tries < 10 && r.At(u, uint32(j)) != 0; tries++ {
+			var j int
+			if neg := negatives[u]; len(neg) > 0 && rng.IntN(2) == 0 {
+				j = int(neg[rng.IntN(len(neg))])
+			} else {
 				j = rng.IntN(r.Cols)
-			}
-			if r.At(u, uint32(j)) != 0 {
-				continue // only positives found
+				for tries := 0; tries < 10 && r.At(u, uint32(j)) > 0; tries++ {
+					j = rng.IntN(r.Cols)
+				}
+				if r.At(u, uint32(j)) > 0 {
+					continue // no object without positive preference found
+				}
 			}
 			pu, qi, qj := p.Row(u), q.Row(i), q.Row(j)
 			x := bias[i] - bias[j]

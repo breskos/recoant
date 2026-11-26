@@ -9,6 +9,7 @@ import (
 
 	"github.com/breskos/recoant"
 	"github.com/breskos/recoant/algo/popularity"
+	"github.com/breskos/recoant/internal/testfix"
 	"github.com/breskos/recoant/signal"
 	"github.com/breskos/recoant/store"
 )
@@ -185,5 +186,19 @@ func TestSnapshot(t *testing.T) {
 	}
 	if _, err := popularity.FromSnapshot(nil); !errors.Is(err, popularity.ErrInvalidSnapshot) {
 		t.Error("nil snapshot")
+	}
+}
+
+func TestRejected(t *testing.T) {
+	s := testfix.NegativeStore(t)
+	m, _ := popularity.New(testfix.NegativeModel(), popularity.Config{})
+	if err := m.Fit(context.Background(), testfix.Hidden()); err != nil {
+		t.Fatal(err)
+	}
+	m.SetSeen(s)
+	testfix.CheckRejected(t, m)
+	// The hide (weight 20) outweighs c's other signals: c counts down.
+	if got := m.Score(testfix.P("c"), testfix.T0); got >= 0 {
+		t.Errorf("Score(c) = %v, want negative", got)
 	}
 }

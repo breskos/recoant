@@ -147,10 +147,9 @@ func (m *UserKNN) Recommend(ctx context.Context, req recoant.Request) ([]recoant
 		}
 	}
 	m.mu.RUnlock()
-	seen := func(uint32) bool { return false }
-	if req.ExcludeSeen && req.Target == rel.Object {
-		history := m.store.Row(rel, si, req.Time)
-		seen = func(j uint32) bool { _, ok := sparse.Get(history, j); return ok }
+	var history []sparse.Entry
+	if req.Target == rel.Object {
+		history = m.store.Row(rel, si, req.Time)
 	}
-	return rank(m.store, req, scores, seen), nil
+	return rank(m.store, req, scores, history), nil
 }

@@ -182,3 +182,35 @@ func TestErrors(t *testing.T) {
 type constant float64
 
 func (c constant) Predict(recoant.Ref, recoant.Ref) (float64, bool) { return float64(c), true }
+
+// MF on the rating channel: a re-rating replaces the old rating.
+func TestRatingChannel(t *testing.T) {
+	train, test := ratings()
+	for i := range train {
+		train[i].Type = "stars"
+	}
+	// u r0 first rates g1 with 1, then corrects it to its real rating.
+	first := train[0]
+	first.Value = 1
+	s, err := store.New(testfix.NegativeModel())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.AddBatch(ctx, append([]recoant.Signal{first}, train...)); err != nil {
+		t.Fatal(err)
+	}
+	m, _ := mf.New(s, mf.Config{Relation: testfix.Rel, Channel: "rating", Factors: 4, Epochs: 200, LearnRate: 0.02, Min: 1, Max: 5, Seed: 1})
+	if err := m.Fit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	for i := range test {
+		test[i].Type = "stars"
+	}
+	if rep := evaluation.Errors(m, test, nil); rep.RMSE > 0.8 {
+		t.Errorf("RMSE on rating channel %.3f", rep.RMSE)
+	}
+	bad, _ := mf.New(s, mf.Config{Relation: testfix.Rel, Channel: "nope"})
+	if err := bad.Fit(ctx); !errors.Is(err, store.ErrUnknownChannel) {
+		t.Errorf("unknown channel: %v", err)
+	}
+}

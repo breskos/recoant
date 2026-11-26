@@ -36,8 +36,8 @@ func TestRecutil(t *testing.T) {
 	idx := func(id string) uint32 { i, _ := s.Index(item(id)); return i }
 	req := recoant.Request{Subject: item("a"), Target: "item", K: 3, Exclude: []recoant.Ref{item("b"), item("zz")},
 		Filter: func(r recoant.Ref) bool { return r.ID != "c" }}
-	seen := SeenIn([]sparse.Entry{{Col: idx("d")}})
-	admit := Admit(s, req, seen)
+	req.ExcludeSeen = true
+	admit := Admit(s, req, []sparse.Entry{{Col: idx("d"), Val: 1}})
 	for id, want := range map[string]bool{"a": false, "b": false, "c": false, "d": false} {
 		if admit(idx(id)) != want {
 			t.Errorf("admit(%s) != %v", id, want)
@@ -49,6 +49,16 @@ func TestRecutil(t *testing.T) {
 	req.Filter = nil
 	if !Admit(s, req, nil)(idx("c")) {
 		t.Error("c should be admitted without filter")
+	}
+	// Rejected (negative) entries are excluded unless IncludeRejected.
+	req.ExcludeSeen = false
+	hist := []sparse.Entry{{Col: idx("c"), Val: -1}, {Col: idx("d"), Val: 2}}
+	if Admit(s, req, hist)(idx("c")) || !Admit(s, req, hist)(idx("d")) {
+		t.Error("rejected c admitted or seen d excluded")
+	}
+	req.IncludeRejected = true
+	if !Admit(s, req, hist)(idx("c")) {
+		t.Error("IncludeRejected ignored")
 	}
 	res := Results(s, "item", []topk.Item{{Index: idx("c"), Score: 2}, {Index: 99, Score: 1}})
 	if len(res) != 1 || res[0].Ref != item("c") || res[0].Score != 2 {

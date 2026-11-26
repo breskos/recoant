@@ -11,6 +11,7 @@ import (
 
 	"github.com/breskos/recoant"
 	"github.com/breskos/recoant/algo/knn"
+	"github.com/breskos/recoant/internal/testfix"
 	"github.com/breskos/recoant/signal"
 	"github.com/breskos/recoant/store"
 )
@@ -367,5 +368,22 @@ func TestRefreshTruncated(t *testing.T) {
 	}
 	if got := ids(m.Neighbors(p("new"))); !slices.Equal(got, []string{"a"}) {
 		t.Errorf("Neighbors(new) = %v", got)
+	}
+}
+
+func TestRejected(t *testing.T) {
+	s := testfix.NegativeStore(t)
+	for _, sim := range []knn.Similarity{knn.Cosine, knn.Jaccard} {
+		im, _ := knn.NewItemKNN(s, knn.Config{Relation: testfix.Rel, Similarity: sim})
+		um, _ := knn.NewUserKNN(s, knn.Config{Relation: testfix.Rel, Similarity: sim})
+		for _, m := range []interface {
+			testfix.Recommender
+			Fit(context.Context) error
+		}{im, um} {
+			if err := m.Fit(ctx); err != nil {
+				t.Fatal(err)
+			}
+			testfix.CheckRejected(t, m)
+		}
 	}
 }
