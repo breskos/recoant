@@ -176,3 +176,19 @@ func (m *BPR) view() factor.View {
 	}
 	return v
 }
+
+// Taste returns the trained subject vector of ref (what it is drawn to);
+// false if it has none.
+func (m *BPR) Taste(ref recoant.Ref) ([]float64, bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return factor.Taste(m.view(), ref)
+}
+
+// Appearance returns the object vector of ref (how it is perceived);
+// false if it has none.
+func (m *BPR) Appearance(ref recoant.Ref) ([]float64, bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return factor.Appearance(m.view(), ref)
+}

@@ -65,3 +65,22 @@ func TestMutualErrors(t *testing.T) {
 		t.Errorf("no subjects: %+v %v", rep, err)
 	}
 }
+
+func TestBySegment(t *testing.T) {
+	// a gets its like recommended, d does not.
+	test := []recoant.Signal{like("a", "b"), like("d", "e")}
+	recs := lists{"a": {"b"}, "d": {"x"}}
+	group := func(r recoant.Ref) (string, bool) {
+		if r.ID == "a" {
+			return "s1", true
+		}
+		return "", false
+	}
+	reps, err := evaluation.BySegment(context.Background(), recs, test, evaluation.Config{K: 1, Target: recoant.User}, group)
+	if err != nil || len(reps) != 2 || reps["s1"].HitRate != 1 || reps[""].HitRate != 0 || reps[""].Subjects != 1 {
+		t.Errorf("%+v %v", reps, err)
+	}
+	if _, err := evaluation.BySegment(context.Background(), recs, test, evaluation.Config{}, group); err == nil {
+		t.Error("invalid config accepted")
+	}
+}

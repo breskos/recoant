@@ -216,3 +216,27 @@ func CheckInterest(t *testing.T, m Scorer) {
 		}
 	}
 }
+
+// Roles is what CheckRoles needs.
+type Roles interface {
+	Taste(ref recoant.Ref) ([]float64, bool)
+	Appearance(ref recoant.Ref) ([]float64, bool)
+}
+
+// CheckRoles checks a trained model: the subject has a taste vector, the
+// object an appearance vector, and not the other way round.
+func CheckRoles(t *testing.T, m Roles, subject, object recoant.Ref) {
+	t.Helper()
+	if u, ok := m.Taste(subject); !ok || len(u) == 0 {
+		t.Errorf("taste of %s: %v %v", subject, u, ok)
+	}
+	if y, ok := m.Appearance(object); !ok || len(y) == 0 {
+		t.Errorf("appearance of %s: %v %v", object, y, ok)
+	}
+	if _, ok := m.Taste(object); ok {
+		t.Errorf("taste of object %s", object)
+	}
+	if _, ok := m.Appearance(subject); ok {
+		t.Errorf("appearance of subject %s", subject)
+	}
+}

@@ -125,3 +125,26 @@ type scorer factor.View
 func (s scorer) Interest(subjects []recoant.Ref, object recoant.Ref) []float64 {
 	return factor.Interest(factor.View(s), subjects, object)
 }
+
+func TestRoles(t *testing.T) {
+	v := view(t)
+	if u, ok := factor.Taste(v, recoant.U("u4")); !ok || u[1] != 1 {
+		t.Errorf("taste of u4: %v %v", u, ok)
+	}
+	if y, ok := factor.Appearance(v, testfix.P("c")); !ok || y[0] != 2 {
+		t.Errorf("appearance of c: %v %v", y, ok)
+	}
+	for _, ref := range []recoant.Ref{testfix.P("a"), recoant.U("nobody")} {
+		if _, ok := factor.Taste(v, ref); ok {
+			t.Errorf("taste of %s", ref)
+		}
+	}
+	_ = v.Store.Add(testfix.Sig("u1", "late", recoant.Visit, 1))
+	if _, ok := factor.Appearance(v, testfix.P("late")); ok {
+		t.Error("appearance without vector")
+	}
+	v.Users = nil
+	if _, ok := factor.Taste(v, recoant.U("u1")); ok {
+		t.Error("taste without vectors")
+	}
+}

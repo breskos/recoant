@@ -94,8 +94,38 @@ type Config struct {
 	// Matching configures, per relation, whether both sides must agree.
 	Matching map[string]Matching `json:"matching,omitempty"`
 
-	// Planned sections, rejected until their version.
-	Segments json.RawMessage `json:"segments,omitempty"`
+	// Segments configures, per kind, how entities are grouped into segments.
+	Segments map[string]Segments `json:"segments,omitempty"`
+}
+
+// Segments configures the segmentation of a kind; see [segment.Segmenter].
+type Segments struct {
+	// K is the number of segments.
+	K int `json:"k"`
+	// Features are taste, appearance (vectors of Model) and attributes of
+	// the kind.
+	Features []string `json:"features"`
+	// Weights scale features; default 1.
+	Weights map[string]float64 `json:"weights,omitempty"`
+	// Model is the factor model for taste and appearance.
+	Model string `json:"model,omitempty"`
+	// Relation is used for activity, negative share and typical objects;
+	// default the relation of Model if its subject is the kind.
+	Relation string `json:"relation,omitempty"`
+	// BatchSize switches to mini-batch k-means.
+	BatchSize int `json:"batch_size,omitempty"`
+	// Iterations bounds the k-means iterations.
+	Iterations int `json:"iterations,omitempty"`
+	// Seed makes the segments reproducible.
+	Seed uint64 `json:"seed,omitempty"`
+	// Restarts is the number of k-means runs; the best wins. Default 10.
+	Restarts int `json:"restarts,omitempty"`
+	// AllowSensitive allows sensitive attributes as features and in
+	// profiles.
+	AllowSensitive bool `json:"allow_sensitive,omitempty"`
+	// Attribute is the category attribute that holds every entity's
+	// segment ("s0", "s1", …) for filters; default "segment".
+	Attribute string `json:"attribute,omitempty"`
 }
 
 // Matching configures how recommendations in a relation are made: one-way
@@ -286,15 +316,6 @@ func (c *Config) Validate() error {
 	if c.Recoant != Version {
 		return invalid("recoant", "version must be %d, got %d", Version, c.Recoant)
 	}
-	for _, p := range []struct {
-		name    string
-		raw     json.RawMessage
-		version string
-	}{{"segments", c.Segments, "v0.7"}} {
-		if len(p.raw) > 0 {
-			return invalid(p.name, "supported from %s", p.version)
-		}
-	}
 	if len(c.Kinds) == 0 {
 		return invalid("kinds", "at least one kind is needed")
 	}
@@ -384,6 +405,9 @@ func (c *Config) Validate() error {
 	if err := c.validateMatching(); err != nil {
 		return err
 	}
+	if err := c.validateSegments(); err != nil {
+		return err
+	}
 	if c.Privacy != nil {
 		for _, rel := range sortedKeys(c.Privacy.Retention) {
 			if _, ok := c.Relations[rel]; !ok {
@@ -402,12 +426,17 @@ func (c *Config) Validate() error {
 func (c *Config) Schema() attr.Schema {
 	s := make(attr.Schema, len(c.Kinds))
 	for k, kind := range c.Kinds {
-		if len(kind.Attributes) == 0 {
+		_, segmented := c.Segments[k]
+		if len(kind.Attributes) == 0 && !segmented {
 			continue
 		}
-		attrs := make(map[string]attr.Spec, len(kind.Attributes))
+		attrs := make(map[string]attr.Spec, len(kind.Attributes)+1)
 		for name, a := range kind.Attributes {
 			attrs[name] = attr.Spec{Type: attr.Type(a.Type), Sensitive: a.Sensitive}
+		}
+		if segmented {
+			// The segment of every entity, for filters.
+			attrs[c.segmentAttribute(k)] = attr.Spec{Type: attr.Category}
 		}
 		s[recoant.Kind(k)] = attrs
 	}

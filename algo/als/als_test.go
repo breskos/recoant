@@ -28,6 +28,7 @@ func TestALS(t *testing.T) {
 	}
 	testfix.CheckGroups(t, m, true)
 	testfix.CheckInterest(t, m)
+	testfix.CheckRoles(t, m, recoant.U("u1"), testfix.P("a"))
 }
 
 // New signals change the recommendations at once (fold-in) and Refresh

@@ -1,0 +1,23 @@
+Apple M1, 8 CPUs, darwin/arm64, go1.27.4
+
+basic/taste-clusters: 5000 users in 10 hidden clusters, 175230 training signals
+
+              segmentation  segments  purity  adjusted Rand  fit time
+                   k-means        10   1.000          1.000     269ms
+  mini-batch k-means (256)        10   0.900          0.883     330ms
+
+segment s0: 500 users (10 %), 13.2 items each, typical items i270, i1340, i1680, i840, i670
+
+segment s1: 500 users (10 %), 13.1 items each, typical items i1609, i629, i1749, i839, i1099
+
+hit rate@10 per segment:
+  s0  0.579  (494 users)
+  s1  0.553  (492 users)
+  s2  0.588  (493 users)
+  s3  0.556  (489 users)
+  s4  0.568  (486 users)
+  s5  0.529  (495 users)
+  s6  0.522  (498 users)
+  s7  0.510  (494 users)
+  s8  0.501  (497 users)
+  s9  0.525  (493 users)
