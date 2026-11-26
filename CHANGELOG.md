@@ -4,6 +4,8 @@ All notable changes to this project are documented in this file. The format foll
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-26
+
 Attributes.
 
 ### Added
@@ -96,7 +98,8 @@ Core data model and baselines.
 - `persist`: save and load stores, signal models and popularity models in JSON or binary, detected on load, written atomically.
 - Project setup: module, CI (vet, race tests, coverage gate, golangci-lint), contribution guidelines and templates.
 
-[Unreleased]: https://github.com/breskos/recoant/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/breskos/recoant/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/breskos/recoant/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/breskos/recoant/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/breskos/recoant/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/breskos/recoant/compare/v0.1.0...v0.2.0
