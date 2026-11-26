@@ -9,6 +9,7 @@ repeated.
 | Run | Date | recoant | recoant-data | Machine | Raw output |
 | --- | --- | --- | --- | --- | --- |
 | v0.5 | 2026-11-26 | v0.5.0 (measured on its feature branch; afterwards only tests and two behavior-preserving refactors changed) | `c8e105f` | Apple M1, 8 cores, 8 GB RAM, macOS, Go 1.27.4 | [2026-11-26](measurements/2026-11-26) |
+| v0.6 (matching only) | 2026-11-26 | v0.6 feature branch | `1b9a821` (branch feat/matching) | same machine | [matching.txt](measurements/2026-11-26/matching.txt) |
 
 ## Summary
 
@@ -21,6 +22,9 @@ in people discovery (**5.0 % → 12.2 %**) and raise it by a third in a shop
 (**8.7 % → 11.8 %**). On data *without* personal taste (pure popularity),
 PureSVD and ALS fall far below plain popularity; use popularity or BPR
 there.
+Reciprocal matching **doubles the expected matches** in a dating app
+(0.46 → 1.02 per 10 recommendations) and spreads attention over twice as
+many profiles.
 
 **Speed.** One 8-core machine serves **2,800 requests per second** from ALS
 or BPR (p99 under 2.5 ms) and **about 200,000 per second** from the
@@ -228,6 +232,57 @@ The program also checks the rules and fails if one is broken; all held:
   pairs;
 - no sensitive attribute (age, gender, location) was exported.
 
+### matching/dating — reciprocal matching
+
+Program: [examples/matching](../examples/matching) — raw output
+[matching.txt](measurements/2026-11-26/matching.txt). 3,000 users of a
+dating app, each with a hidden style and a preferred style in others;
+attractive users get most likes and are pickier (the most attractive tenth
+receives 28 % of all likes but returns only 6.6 % of them, the others
+16.9 %). Trained on the first 80 % of the period; every user with a like
+afterwards gets 10 profiles they have not seen. ALS with 16 factors and
+α = 10 serves all four variants.
+
+The main number is **expected matches**: for each recommended pair, the
+true probability that both like each other, known from the generator,
+summed over the 10 recommendations. It says how many matches a user would
+get if they looked at the 10 profiles. The logged mutual hit rate (the
+user liked the profile later and the profile liked the user) is shown
+too, but it is small and noisy, because a match in the log also needs both
+to have come across each other by chance.
+
+| Recommender | expected matches per 10 | of ceiling | hit rate (one-way) | mutual hit rate | distinct profiles | Gini | ms/request |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| random (floor) | 0.35 | 0 % | 1.3 % | 0.26 % | 2,944 | 0.48 | — |
+| one-way ALS | 0.46 | 3 % | **4.7 %** | 0.36 % | 994 | 0.71 | 0.13 |
+| reciprocal (harmonic) | 0.99 | 15 % | 2.4 % | **0.87 %** | 2,198 | 0.53 | 0.27 |
+| reciprocal + exposure balancing 0.5 | **1.02** | **15 %** | 1.7 % | 0.73 % | 2,304 | **0.46** | 0.28 |
+| oracle (ceiling) | 4.71 | 100 % | 3.8 % | 2.15 % | 1,702 | 0.54 | — |
+
+**Verdict: reciprocal matching doubles the matches.** One-way ALS finds
+the profiles a user likes (the highest one-way hit rate), but many of
+them are attractive profiles that rarely like back, so it is hardly better
+than random at producing matches. Combining both directions gives **2.1
+times the expected matches** and **2.4 times the logged matches**, and
+spreads attention over twice as many profiles (Gini 0.71 → 0.53). Exposure
+balancing spreads it further (Gini 0.46) at no cost in matches. The price
+is a lower one-way hit rate: users see fewer of the profiles they would
+like and more of those who would like them back — the right trade for
+dating, mentoring or job matching, the wrong one for "follow" or discovery
+(use `mode: one_way` there). A request costs twice as long (0.27 ms),
+because the reverse direction is scored for 200 candidates.
+
+**Room to grow.** 15 % of the ceiling is honest but modest: the oracle
+knows the exact formula behind every like. The learned interests are the
+limit — implicit ALS still favors popular profiles in both directions — not
+the combination: rescoring 1,000 or all 3,000 candidates instead of 200
+changed the result by less than 2 %. Attribute filters (see above) and
+feature models (v0.10) are the next levers.
+
+**Collective factorization** (shared subject vectors across relations) is
+covered by unit tests; no data set with two relations of the same users
+exists yet, so it is not measured here.
+
 ## Performance
 
 Program: [examples/benchmark](../examples/benchmark) — raw output
@@ -321,6 +376,10 @@ go run ./examples/evaluate -data ../recoant-data/synthetic
 
 ```bash
 go run ./examples/attributes -data ../recoant-data/synthetic
+```
+
+```bash
+go run ./examples/matching -data ../recoant-data/synthetic
 ```
 
 ```bash

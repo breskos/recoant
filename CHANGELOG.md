@@ -5,7 +5,16 @@ All notable changes to this project are documented in this file. The format foll
 ## [Unreleased]
 
 ### Added
+- **`match` package**: `match.Reciprocal` recommends pairs where both sides must agree. The forward direction comes from any recommender, the reverse from a `match.Scorer`; both are calibrated to [0, 1] (`clamp` or `sigmoid`) and combined with a harmonic or geometric mean, the minimum or the product, with a minimum per direction. Candidates who rejected the subject are left out, and exposure balancing divides by `(1 + n/n̄)^β` so that popular profiles are recommended less often.
+- **Roles**: every factor model (ALS, BPR, MF variants, PureSVD) has `Interest(subjects, object)`, the subjects' taste vectors times the object's appearance vector, which scores the reverse direction.
+- **Collective factorization**: `als.Config.Shared` and `SharedWeight` let further relations with the same subject kind train the subject vectors, so a user's taste learns from likes and purchases alike.
+- **Configuration**: the `matching` section per relation (`mode` one_way or reciprocal, `combine`, `calibrate`, `min_each`, `exposure_balancing`, `pool`, `reverse_model` for relations between different kinds), and `shared` for ALS models. Every model of a reciprocal relation is served reciprocally.
+- **Evaluation**: `evaluation.Mutual` measures hit rate, mutual hit rate, mutual precision and the Gini concentration of recommendations.
+- **examples/matching** measures reciprocal matching on the new data set `matching/dating` of recoant-data; results in [docs/measurements.md](docs/measurements.md).
 - **Use cases** in `examples/usecases`: six runnable stories (online shop, dating, music, recipes, events, job board), each with a configuration and a README that explains how to model the application and which design decisions to copy; a gallery page maps "I want …" to features. CI runs them.
+
+### Changed
+- The `matching` section of the configuration is accepted (it was rejected as planned before).
 
 ## [0.5.0] - 2026-11-26
 

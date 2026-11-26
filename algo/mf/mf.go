@@ -286,6 +286,21 @@ func (m *MF) Predict(subject, object recoant.Ref) (float64, bool) {
 func (m *MF) Recommend(ctx context.Context, req recoant.Request) ([]recoant.Scored, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
+	return factor.Recommend(ctx, m.view(), req)
+}
+
+// Interest returns the predicted interest of every subject in the object,
+// from the subjects' trained vectors and the object's bias (subject
+// biases are left out); NaN where a vector is missing. It scores the
+// reverse direction of reciprocal matching.
+func (m *MF) Interest(subjects []recoant.Ref, object recoant.Ref) []float64 {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return factor.Interest(m.view(), subjects, object)
+}
+
+// view returns a snapshot of the model; the caller holds m.mu.
+func (m *MF) view() factor.View {
 	v := factor.View{Store: m.store, Rel: m.cfg.Relation, UserVector: m.userVector, HistoryTime: m.fitTime}
 	if m.fitted {
 		v.Items, v.Users, v.UserNorms = m.q, m.p, m.userNorms
@@ -293,5 +308,5 @@ func (m *MF) Recommend(ctx context.Context, req recoant.Request) ([]recoant.Scor
 			v.ItemBias = m.bi
 		}
 	}
-	return factor.Recommend(ctx, v, req)
+	return v
 }

@@ -28,6 +28,7 @@ func TestPureSVD(t *testing.T) {
 		t.Fatal(err)
 	}
 	testfix.CheckGroups(t, m, true)
+	testfix.CheckInterest(t, m)
 	sv := m.SingularValues()
 	if len(sv) != 2 || sv[0] < sv[1] || sv[1] <= 0 {
 		t.Errorf("singular values %v", sv)

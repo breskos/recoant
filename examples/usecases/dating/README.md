@@ -1,6 +1,6 @@
 # Dating and people discovery
 
-**People who match your taste, only when both of you fit each other's age range and live nearby. Nobody you passed comes back, and a deleted account is gone everywhere at once.**
+**People who match your taste *and* would like you back, only when both of you fit each other's age range and live nearby. Nobody you passed comes back, and a deleted account is gone everywhere at once.**
 
 ```sh
 go run ./examples/usecases/dating
@@ -11,19 +11,19 @@ Mia, 29, Berlin, looks for 27–35, liked three outdoor people and passed on Pat
 
 Discover for Mia (mutual age range, within 50 km):
   1. Luca    31, Berlin    10 km  looks for 27–36  likes hiking, climbing, cycling
-  2. Eli     31, Berlin     6 km  looks for 27–36  likes hiking, climbing, cycling
-  3. Robin   30, Berlin    13 km  looks for 26–35  likes hiking, climbing, cycling
-  ...
+  2. Robin   30, Berlin    13 km  looks for 26–35  likes hiking, climbing, cycling
+  3. Jo      32, Berlin    12 km  looks for 28–37  likes hiking, climbing, cycling
+  4. Eli     31, Berlin     6 km  looks for 27–36  likes hiking, climbing, cycling
 
 After Luca (p198) deleted the account:
-  1. Eli     31, Berlin     6 km  looks for 27–36  likes hiking, climbing, cycling
+  1. Robin   30, Berlin    13 km  looks for 26–35  likes hiking, climbing, cycling
   ...
 
 Export of Mia's profile without sensitive attributes: [interests max_age min_age]
-Retention a year later drops 9662 old swipes.
+Retention a year later drops 9779 old swipes.
 ```
 
-Every suggestion is between 27 and 35, as Mia wants. Mia's age of 29 is also inside each suggested person's own range. Everyone is within 50 km.
+Every suggestion is someone Mia is likely to like *and* who is likely to like her back: outdoor people, whose likes and passes show they go for profiles like hers. Every suggestion is between 27 and 35, as Mia wants. Mia's age of 29 is also inside each suggested person's own range. Everyone is within 50 km.
 
 ## How it is built
 
@@ -33,9 +33,22 @@ Every suggestion is between 27 and 35, as Mia wants. Mia's age of 29 is also ins
 | Relation | `likes`: user → user, half-life 60 days | People rate people. Old swipes fade. |
 | Signals | `view` 0.5, `like` 5, `message` 8, `pass` (negative, 3), `block` (negative, 50) | A block outweighs everything |
 | Models | `attraction` (ALS), `popular` (fallback for new members) | ALS learns taste from who likes whom |
+| Matching | `likes` is `reciprocal`, exposure balancing 0.5 | Both directions count; popular profiles are spread out |
 | Serving | `discover` with two filters | See below |
 
-The filters are what make it a dating app:
+Reciprocal matching and the filters are what make it a dating app:
+
+```json
+"matching": {
+  "likes": {"mode": "reciprocal", "min_each": 0.05, "exposure_balancing": 0.5}
+}
+```
+
+- **`reciprocal`** combines how much Mia would like a person with how much that person would like Mia (harmonic mean), both from the same ALS model: its subject vectors are each person's taste, its object vectors how each person comes across. Someone with no chance of liking Mia back is not shown, however attractive.
+- **`min_each`** drops pairs where one direction is close to zero.
+- **`exposure_balancing`** shows very popular profiles less often, so attention spreads and more matches happen.
+
+The filters:
 
 ```json
 "filters": [
@@ -61,6 +74,10 @@ The filters are what make it a dating app:
 - Superlikes, messages and matches are just more signals with higher weights.
 - For professional networking, rename the signals (`connect`, `endorse`) and keep the filters.
 
+## How much it helps
+
+On the dating data set of recoant-data, reciprocal matching doubles the expected matches per 10 suggestions compared with one-way ALS (0.46 → 1.02) and spreads attention over twice as many profiles; see [measurements](../../../docs/measurements.md#matchingdating--reciprocal-matching).
+
 ## Coming in later versions
 
-v0.6 brings real **reciprocal matching**: a score for "would they like me back?", combined from both directions, plus exposure balancing so that popular profiles are not shown to everyone. Until then, `mutual` filters guarantee that the hard preferences fit both ways.
+Segments and profiles to understand your members (v0.7), and new members recommended from their profile before anyone has swiped on them (v0.10).

@@ -5,6 +5,7 @@ package testfix
 import (
 	"context"
 	"errors"
+	"math"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -193,4 +194,25 @@ func CheckCancel(t *testing.T, fn func(ctx context.Context) error) {
 		}
 	}
 	t.Fatal("never succeeded")
+}
+
+// Scorer is what CheckInterest needs.
+type Scorer interface {
+	Interest(subjects []recoant.Ref, object recoant.Ref) []float64
+}
+
+// CheckInterest checks a model trained on Groups: u2 (who likes c) is more
+// interested in c than u5; unknown subjects, other kinds and unknown
+// objects are NaN.
+func CheckInterest(t *testing.T, m Scorer) {
+	t.Helper()
+	got := m.Interest([]recoant.Ref{recoant.U("u2"), recoant.U("u5"), recoant.U("nobody"), P("a")}, P("c"))
+	if len(got) != 4 || !(got[0] > got[1]) || !math.IsNaN(got[2]) || !math.IsNaN(got[3]) {
+		t.Errorf("interest in c: %v", got)
+	}
+	for _, object := range []recoant.Ref{P("nothing"), recoant.U("u1")} {
+		if got := m.Interest([]recoant.Ref{recoant.U("u2")}, object); !math.IsNaN(got[0]) {
+			t.Errorf("interest in %s: %v", object, got)
+		}
+	}
 }

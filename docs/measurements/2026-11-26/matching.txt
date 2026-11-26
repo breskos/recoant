@@ -1,0 +1,12 @@
+Apple M1, 8 CPUs, darwin/arm64, go1.27.4
+
+matching/dating: 364581 signals, train until 2026-03-15 (297700), test 66881; k = 10
+
+2743 users with a like in the test period
+                recommender  expected matches  of ceiling  hit rate  mutual hit rate  distinct  gini  ms/request
+                one-way ALS             0.461         3 %     0.047           0.0036       994  0.71        0.13
+      reciprocal (harmonic)             0.990        15 %     0.024           0.0087      2198  0.53        0.27
+  reciprocal + exposure 0.5             1.018        15 %     0.017           0.0073      2304  0.46        0.28
+    reciprocal + exposure 1             0.994        15 %     0.017           0.0073      2240  0.46        0.27
+             random (floor)             0.346         0 %     0.013           0.0026      2944  0.48        0.90
+           oracle (ceiling)             4.706       100 %     0.038           0.0215      1702  0.54        1.08

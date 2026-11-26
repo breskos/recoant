@@ -35,7 +35,11 @@
     "jobs": {"algorithm": "als", "relation": "applies", "params": {"factors": 4, "seed": 1}},
     "similar_jobs": {"algorithm": "item-knn", "relation": "applies", "params": {"neighbors": 20}},
     "candidates": {"algorithm": "user-knn", "relation": "recruits", "params": {"neighbors": 20}},
+    "talent": {"algorithm": "als", "relation": "recruits", "params": {"factors": 4, "seed": 1}},
     "new_jobs": {"algorithm": "popularity", "relation": "applies"}
+  },
+  "matching": {
+    "applies": {"mode": "reciprocal", "reverse_model": "talent", "min_each": 0.05}
   },
   "serving": {
     "jobs_for_you": {

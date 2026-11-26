@@ -156,9 +156,23 @@ func (m *BPR) userVector(si uint32, _ []sparse.Entry) ([]float64, bool) {
 func (m *BPR) Recommend(ctx context.Context, req recoant.Request) ([]recoant.Scored, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
+	return factor.Recommend(ctx, m.view(), req)
+}
+
+// Interest returns the predicted interest of every subject in the object,
+// from the subjects' trained vectors; NaN where a vector is missing. It
+// scores the reverse direction of reciprocal matching.
+func (m *BPR) Interest(subjects []recoant.Ref, object recoant.Ref) []float64 {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return factor.Interest(m.view(), subjects, object)
+}
+
+// view returns a snapshot of the model; the caller holds m.mu.
+func (m *BPR) view() factor.View {
 	v := factor.View{Store: m.store, Rel: m.cfg.Relation, UserVector: m.userVector, HistoryTime: m.fitTime}
 	if m.fitted {
 		v.Items, v.ItemBias, v.Users, v.UserNorms = m.q, m.bias, m.p, m.userNorms
 	}
-	return factor.Recommend(ctx, v, req)
+	return v
 }

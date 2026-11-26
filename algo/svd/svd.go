@@ -148,12 +148,26 @@ func (m *PureSVD) userVector(_ uint32, history []sparse.Entry) ([]float64, bool)
 func (m *PureSVD) Recommend(ctx context.Context, req recoant.Request) ([]recoant.Scored, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	return factor.Recommend(ctx, factor.View{
+	return factor.Recommend(ctx, m.view(), req)
+}
+
+// Interest returns the predicted interest of every subject in the object,
+// from the subjects' vectors; NaN where a vector is missing. It scores
+// the reverse direction of reciprocal matching.
+func (m *PureSVD) Interest(subjects []recoant.Ref, object recoant.Ref) []float64 {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return factor.Interest(m.view(), subjects, object)
+}
+
+// view returns a snapshot of the model; the caller holds m.mu.
+func (m *PureSVD) view() factor.View {
+	return factor.View{
 		Store: m.store, Rel: m.cfg.Relation,
 		Items: m.items, ItemBias: m.mean,
 		SimItems: m.sim, SimItemNorms: m.simNorms,
 		Users: m.users, UserNorms: m.userNorms,
 		UserVector:  m.userVector,
 		HistoryTime: m.fitTime,
-	}, req)
+	}
 }

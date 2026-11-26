@@ -9,6 +9,7 @@ import (
 	"github.com/breskos/recoant"
 	"github.com/breskos/recoant/algo/popularity"
 	"github.com/breskos/recoant/attr"
+	"github.com/breskos/recoant/match"
 	"github.com/breskos/recoant/store"
 )
 
@@ -45,6 +46,8 @@ type Engine struct {
 	attrs  *attr.Store
 	models map[string]Trainable
 	names  []string
+	// matchers wrap the models of reciprocal relations, by model name.
+	matchers map[string]*match.Reciprocal
 }
 
 // Build creates the store and all models.
@@ -72,7 +75,46 @@ func (c *Config) Build() (*Engine, error) {
 		}
 		e.models[name] = m
 	}
+	if err := e.buildMatchers(); err != nil {
+		return nil, err
+	}
 	return e, nil
+}
+
+// buildMatchers wraps every model of a reciprocal relation.
+func (e *Engine) buildMatchers() error {
+	for _, name := range e.names {
+		rel := e.cfg.Models[name].Relation
+		if !e.cfg.reciprocal(rel) {
+			continue
+		}
+		reverse := e.models[name]
+		if rm := e.cfg.Matching[rel].ReverseModel; rm != "" {
+			reverse = e.models[rm]
+		}
+		scorer, ok := reverse.(match.Scorer)
+		if !ok {
+			return fmt.Errorf("%w: matching.%s: model %s cannot score the reverse direction", ErrInvalid, rel, name)
+		}
+		m, err := match.New(e.store, e.models[name], scorer, e.cfg.matchConfig(rel))
+		if err != nil {
+			return fmt.Errorf("%w: matching.%s: %w", ErrInvalid, rel, err)
+		}
+		if e.matchers == nil {
+			e.matchers = make(map[string]*match.Reciprocal)
+		}
+		e.matchers[name] = m
+	}
+	return nil
+}
+
+// recommender returns the recommender that answers for a model: its
+// reciprocal wrapper or the model itself.
+func (e *Engine) recommender(name string) recoant.Recommender {
+	if m, ok := e.matchers[name]; ok {
+		return m
+	}
+	return e.models[name]
 }
 
 // Config returns the configuration.
@@ -162,6 +204,18 @@ func (e *Engine) Fit(ctx context.Context) error {
 			return fmt.Errorf("model %s: %w", name, err)
 		}
 	}
+	return e.fitMatchers(ctx)
+}
+
+// fitMatchers counts the exposure of reciprocal relations.
+func (e *Engine) fitMatchers(ctx context.Context) error {
+	for _, name := range e.names {
+		if m, ok := e.matchers[name]; ok {
+			if err := m.Fit(ctx); err != nil && !noData(err) {
+				return fmt.Errorf("matching of model %s: %w", name, err)
+			}
+		}
+	}
 	return nil
 }
 
@@ -180,7 +234,7 @@ func (e *Engine) Refresh(ctx context.Context) error {
 			return fmt.Errorf("model %s: %w", name, err)
 		}
 	}
-	return nil
+	return e.fitMatchers(ctx)
 }
 
 // noData reports errors of models without data yet.
@@ -222,9 +276,9 @@ func (e *Engine) Recommend(ctx context.Context, serving string, subject recoant.
 		return nil, err
 	}
 	s := e.cfg.Serving[serving]
-	res, err := attr.Filtered(e.models[s.Model], e.attrs).Recommend(ctx, req)
+	res, err := attr.Filtered(e.recommender(s.Model), e.attrs).Recommend(ctx, req)
 	if err != nil || len(res) > 0 || s.Fallback == "" {
 		return res, err
 	}
-	return attr.Filtered(e.models[s.Fallback], e.attrs).Recommend(ctx, req)
+	return attr.Filtered(e.recommender(s.Fallback), e.attrs).Recommend(ctx, req)
 }

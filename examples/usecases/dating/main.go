@@ -137,6 +137,20 @@ func run() error {
 		}
 	}
 
+	// People see Mia too: outdoor people mostly like her, others mostly pass.
+	for _, p := range people[:400] {
+		if rng.Float64() > 0.3 {
+			continue
+		}
+		typ := "pass"
+		if p.scene == mia.scene && rng.Float64() < 0.8 || rng.Float64() < 0.1 {
+			typ = "like"
+		}
+		if err := swipe(p.id, "mia", typ, now.Add(-time.Duration(rng.IntN(20*24))*time.Hour)); err != nil {
+			return err
+		}
+	}
+
 	if err := engine.Fit(ctx); err != nil {
 		return err
 	}
@@ -175,6 +189,9 @@ func run() error {
 
 	// Account deletion: the first suggestion deletes the account. It is
 	// gone from every feed at once, with its attributes.
+	if len(res) == 0 {
+		return fmt.Errorf("no hikers for Mia")
+	}
 	gone := res[0].Ref
 	engine.Delete(gone)
 	res, err = engine.Recommend(ctx, "discover", recoant.U("mia"), 3, recoant.Condition{Attribute: "interests", In: []string{"hiking"}})

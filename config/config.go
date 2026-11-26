@@ -91,9 +91,37 @@ type Config struct {
 	// attributes.
 	Privacy *Privacy `json:"privacy,omitempty"`
 
+	// Matching configures, per relation, whether both sides must agree.
+	Matching map[string]Matching `json:"matching,omitempty"`
+
 	// Planned sections, rejected until their version.
-	Matching json.RawMessage `json:"matching,omitempty"`
 	Segments json.RawMessage `json:"segments,omitempty"`
+}
+
+// Matching configures how recommendations in a relation are made: one-way
+// (the default; follow, discovery) or reciprocal (dating, mentoring, job
+// matching), where every model of the relation is wrapped in a
+// [match.Reciprocal] recommender.
+type Matching struct {
+	// Mode is one_way (default) or reciprocal.
+	Mode string `json:"mode,omitempty"`
+	// Combine is harmonic (default), geometric, min or product.
+	Combine string `json:"combine,omitempty"`
+	// Calibrate is clamp (default, for ALS) or sigmoid (for BPR and MF).
+	Calibrate string `json:"calibrate,omitempty"`
+	// MinEach is the minimum calibrated interest in each direction.
+	MinEach float64 `json:"min_each,omitempty"`
+	// ExposureBalancing in [0, 1] lowers the scores of candidates that
+	// many subjects already like.
+	ExposureBalancing float64 `json:"exposure_balancing,omitempty"`
+	// Pool is the number of forward candidates rescored; default 20·k, at
+	// least 200.
+	Pool int `json:"pool,omitempty"`
+	// ReverseModel is a factor model of the reverse relation (object to
+	// subject) that scores the other direction. It is needed when subject
+	// and object kinds differ; otherwise the relation's own model scores
+	// both directions.
+	ReverseModel string `json:"reverse_model,omitempty"`
 }
 
 // Privacy configures retention and deletion.
@@ -174,6 +202,9 @@ type Model struct {
 	Channel string `json:"channel,omitempty"`
 	// Params are the algorithm's parameters (see its Config type).
 	Params json.RawMessage `json:"params,omitempty"`
+	// Shared lists further relations with the same subject kind that also
+	// train the subject vectors (collective factorization; als only).
+	Shared []string `json:"shared,omitempty"`
 }
 
 // Serving declares a request type.
@@ -259,7 +290,7 @@ func (c *Config) Validate() error {
 		name    string
 		raw     json.RawMessage
 		version string
-	}{{"matching", c.Matching, "v0.6"}, {"segments", c.Segments, "v0.7"}} {
+	}{{"segments", c.Segments, "v0.7"}} {
 		if len(p.raw) > 0 {
 			return invalid(p.name, "supported from %s", p.version)
 		}
@@ -323,6 +354,9 @@ func (c *Config) Validate() error {
 		if _, ok := c.Relations[m.Relation]; !ok {
 			return invalid(path+".relation", "unknown relation %q", m.Relation)
 		}
+		if err := c.validateShared(path, m); err != nil {
+			return err
+		}
 	}
 	for _, name := range sortedKeys(c.Serving) {
 		s := c.Serving[name]
@@ -346,6 +380,9 @@ func (c *Config) Validate() error {
 		if err := c.validateFilters(path, s); err != nil {
 			return err
 		}
+	}
+	if err := c.validateMatching(); err != nil {
+		return err
 	}
 	if c.Privacy != nil {
 		for _, rel := range sortedKeys(c.Privacy.Retention) {
