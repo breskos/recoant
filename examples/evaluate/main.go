@@ -5,21 +5,28 @@
 //
 // Each data set is split by time (80 % train, 20 % test); every model is
 // trained on the train part and asked for the top 10 for each test user,
-// excluding what the user has already seen. On the explicit ratings, the
+// excluding what the user has already seen. Two references frame the
+// results: "random" ranks the catalog at random (the floor) and "oracle"
+// ranks it with the hidden structure that generated the data set — true
+// popularity ranks, true clusters or true latent factors (the ceiling a
+// model could reach from the structure alone). On the explicit ratings, the
 // matrix factorizations are measured by the RMSE of predicted ratings.
 package main
 
 import (
 	"bufio"
+	"cmp"
 	"context"
 	"encoding/csv"
 	"errors"
 	"flag"
 	"fmt"
+	"hash/fnv"
 	"io"
 	"log"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"text/tabwriter"
 	"time"
@@ -122,6 +129,22 @@ func main() {
 				return m, m.Fit(ctx)
 			}},
 		}
+		oracle, err := oracleFor(filepath.Join(*data, tk.set))
+		if err != nil {
+			log.Fatal(err)
+		}
+		models = append(models,
+			struct {
+				name string
+				make func() (recoant.Recommender, error)
+			}{"random", func() (recoant.Recommender, error) {
+				return ranked{s, func(u, i recoant.Ref) float64 { return hash(u.ID + "|" + i.ID) }}, nil
+			}},
+			struct {
+				name string
+				make func() (recoant.Recommender, error)
+			}{"oracle", func() (recoant.Recommender, error) { return ranked{s, oracle}, nil }},
+		)
 		catalog := s.Len(tk.target)
 		for _, md := range models {
 			if tk.target == recoant.User && (md.name == "popularity" || md.name == "item-knn") {
@@ -235,5 +258,108 @@ func load(path string) ([]recoant.Signal, error) {
 			Object:  recoant.Ref{Kind: recoant.Kind(rec[3]), ID: rec[4]},
 			Type:    recoant.SignalType(rec[5]), Value: v, Session: rec[7],
 		})
+	}
+}
+
+// ranked recommends the candidates of the target kind known to the store
+// in the order of a score function; the references random and oracle.
+type ranked struct {
+	s     *store.Store
+	score func(subject, candidate recoant.Ref) float64
+}
+
+func (r ranked) Recommend(_ context.Context, req recoant.Request) ([]recoant.Scored, error) {
+	if err := req.Validate(); err != nil {
+		return nil, err
+	}
+	var out []recoant.Scored
+	for j := range r.s.Len(req.Target) {
+		c, ok := r.s.Ref(req.Target, uint32(j))
+		if !ok || c == req.Subject || (req.ExcludeSeen && r.s.Has(req.Subject, c)) {
+			continue
+		}
+		out = append(out, recoant.Scored{Ref: c, Score: r.score(req.Subject, c)})
+	}
+	slices.SortFunc(out, func(a, b recoant.Scored) int { return cmp.Compare(b.Score, a.Score) })
+	return out[:min(req.K, len(out))], nil
+}
+
+// hash maps a string to [0, 1), deterministically.
+func hash(s string) float64 {
+	h := fnv.New64a()
+	_, _ = h.Write([]byte(s))
+	return float64(h.Sum64()>>11) / (1 << 53)
+}
+
+// oracleFor returns the score of the hidden structure of a data set: the
+// true rank for zipf-popularity, the true cluster (then rank in cluster)
+// for taste clusters and the social graph, the true affinity p_u·q_i + b_i
+// for latent factors. Ties are broken at random.
+func oracleFor(dir string) (func(subject, candidate recoant.Ref) float64, error) {
+	table := func(name string) (map[string][]string, error) {
+		m := map[string][]string{}
+		err := readTable(filepath.Join(dir, name), func(rec []string) { m[rec[0]] = slices.Clone(rec[1:]) })
+		return m, err
+	}
+	num := func(s string) float64 { v, _ := strconv.ParseFloat(s, 64); return v }
+	switch filepath.Base(dir) {
+	case "zipf-popularity":
+		items, err := table("items.csv") // item_id, rank, share
+		return func(_, c recoant.Ref) float64 { return -num(items[c.ID][0]) }, err
+	case "taste-clusters", "social":
+		users, err := table("users.csv") // user_id, cluster
+		if err != nil {
+			return nil, err
+		}
+		items, err := table("items.csv") // item_id, cluster, rank_in_cluster
+		return func(u, c recoant.Ref) float64 {
+			if c.Kind == recoant.User {
+				if users[c.ID][0] == users[u.ID][0] {
+					return 1 + hash(u.ID+"|"+c.ID)
+				}
+				return hash(u.ID + "|" + c.ID)
+			}
+			if items[c.ID][0] == users[u.ID][0] {
+				return 1e6 - num(items[c.ID][1])
+			}
+			return -num(items[c.ID][1])
+		}, err
+	case "implicit-feedback":
+		users, err := table("users.csv") // user_id, bias, f1…f8
+		if err != nil {
+			return nil, err
+		}
+		items, err := table("items.csv") // item_id, bias, f1…f8
+		return func(u, c recoant.Ref) float64 {
+			p, q := users[u.ID], items[c.ID]
+			v := num(q[0])
+			for k := 1; k < len(q); k++ {
+				v += num(p[k]) * num(q[k])
+			}
+			return v
+		}, err
+	}
+	return nil, fmt.Errorf("no oracle for %s", dir)
+}
+
+func readTable(path string, fn func(rec []string)) error {
+	f, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = f.Close() }()
+	r := csv.NewReader(bufio.NewReader(f))
+	if _, err := r.Read(); err != nil {
+		return err
+	}
+	for {
+		rec, err := r.Read()
+		if errors.Is(err, io.EOF) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		fn(rec)
 	}
 }

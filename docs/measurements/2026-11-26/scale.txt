@@ -1,0 +1,4 @@
+Apple M1, 8 CPUs, darwin/arm64, go1.27.4
+
+scale: 40000000 signals of 2000000 users on 500000 items in 20.3s = 1.97 million signals/s
+scale: 36099631 distinct interactions, store heap 0.73 GB (20.2 bytes per interaction, IDs included)
