@@ -10,7 +10,7 @@ repeated.
 | --- | --- | --- | --- | --- | --- |
 | v0.5 | 2026-11-26 | v0.5.0 (measured on its feature branch; afterwards only tests and two behavior-preserving refactors changed) | `c8e105f` | Apple M1, 8 cores, 8 GB RAM, macOS, Go 1.27.4 | [2026-11-26](measurements/2026-11-26) |
 | v0.6 (matching only) | 2026-11-26 | v0.6.0 (measured on its feature branch; afterwards only requests in other directions were changed to pass through, which the measurement does not use) | `1b9a821` (merged into main as `d6f0eb4`) | same machine | [matching.txt](measurements/2026-11-26/matching.txt) |
-| v0.7 (segments only) | 2026-11-26 | v0.7 feature branch | `b43c387` (branch feat/segments) | same machine | [segments.txt](measurements/2026-11-26/segments.txt) |
+| v0.7 (segments only) | 2026-11-26 | v0.7.0 (measured on its feature branch; afterwards only stable segment numbers were added, which renumber but do not change the segments) | `b43c387` (merged into main as `7b8d780`) | same machine | [segments.txt](measurements/2026-11-26/segments.txt) |
 
 ## Summary
 
