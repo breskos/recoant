@@ -141,7 +141,6 @@ func TestValidate(t *testing.T) {
 	cases := map[string]struct{ json, want string }{
 		"version":       {`{"recoant": 2, ` + base + `}`, "recoant: version"},
 		"unknown field": {`{"recoant": 1, "colour": 1, ` + base + `}`, "unknown field"},
-		"segments":      {`{"recoant": 1, "segments": {}, ` + base + `}`, "segments: supported from v0.7"},
 		"retention":     {`{"recoant": 1, "privacy": {"retention": {"x": "1d"}}, ` + base + `}`, "privacy.retention.x: unknown relation"},
 		"no kinds":      {`{"recoant": 1}`, "kinds: at least one"},
 		"attribute":     {`{"recoant": 1, "kinds": {"user": {"attributes": {"age": {"type": "int"}}}}}`, "kinds.user.attributes.age.type"},
@@ -278,8 +277,9 @@ func TestFiltersAndPrivacy(t *testing.T) {
 		t.Errorf("request filters = %v", req.Where)
 	}
 
-	// Sensitive attributes are not exported.
-	if a := e.ExportAttributes(recoant.U("ann")); len(a) != 3 {
+	// Sensitive attributes are not exported; the segment is (people.json
+	// segments users).
+	if a := e.ExportAttributes(recoant.U("ann")); len(a) != 4 || a["segment"].Category == "" {
 		t.Errorf("export = %v", a)
 	}
 

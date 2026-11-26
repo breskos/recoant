@@ -1,6 +1,6 @@
 # Architecture
 
-*State: draft. Implemented: core types, signal model, store, popularity, evaluation and persistence (v0.1), neighborhood models (v0.2), latent factor models (v0.3), signals 2.0 and the configuration (v0.4), attributes, filters, deletion and retention (v0.5), roles, reciprocal matching and collective factorization (v0.6). Segments are the design for the next version; see the [roadmap](../ROADMAP.md).*
+*State: draft. Implemented: core types, signal model, store, popularity, evaluation and persistence (v0.1), neighborhood models (v0.2), latent factor models (v0.3), signals 2.0 and the configuration (v0.4), attributes, filters, deletion and retention (v0.5), roles, reciprocal matching and collective factorization (v0.6), segments and profiles (v0.7). Streaming is the design for the next version; see the [roadmap](../ROADMAP.md).*
 
 recoant is a framework for recommendation engines in Go. It takes a stream of
 signals between anonymized users and entities — visits, clicks, dwell time,
@@ -251,18 +251,34 @@ Uses:
 
 ## Segments and profiles
 
-*Planned for v0.7.*
+*Implemented in v0.7 (package `segment`); funnel stages in profiles follow
+with v0.9, segments as model features with v0.10.*
 
 - **Clustering** of subjects (and objects) on their taste/appearance vectors
-  and attributes: k-means for batch, mini-batch k-means for streams, with a
-  configurable number of segments and feature weights.
-- **Segment profiles**: size, typical objects, attribute distributions,
-  activity, funnel stage, share of negative feedback.
-- **Entity profiles**: segment, position in taste and appearance space,
-  activity, positive/negative ratio, most similar entities. Profiles are the
-  basis for assessing users and for explanations.
-- Segments can be used as filters, as features and for per-segment
-  evaluation.
+  and attributes: k-means (k-means++ seeds, 10 restarts by default) for
+  batch, mini-batch k-means for large sets, with a configurable number of
+  segments and feature weights. Categories and sets are one-hot, numbers
+  and locations standardized; every feature block is scaled to the same
+  average size before its weight applies, so no block dominates by its
+  number of dimensions. Sensitive attributes need `allow_sensitive`.
+- **Segment profiles**: size, share, typical objects, attribute
+  distributions, activity, share of negative feedback.
+- **Entity profiles**: segment, distance to the segment center (relative to
+  the segment's mean), activity, positive and negative interactions, most
+  similar entities. Profiles are the basis for assessing users and for
+  explanations. New entities are assigned to the nearest center.
+- **Segments as filters**: every entity's segment is stored as a category
+  attribute (default `segment`, values `s0`, `s1`, …), so the usual filters
+  apply, e.g. `{"attribute": "segment", "same": true}`.
+- **Per-segment evaluation**: `evaluation.BySegment`.
+- **Stable numbers**: after a refit every segment keeps the number of the
+  nearest old segment, so stored segment attributes keep their meaning.
+- **Choosing features**: combine behavior (taste) with the attributes that
+  separate groups of the same taste; leave out features without
+  information, which weigh as much as the others and blur the segments
+  (measured below).
+
+Measured effect: [measurements](measurements.md#basictaste-clusters--segments).
 
 ## Funnels and signal relevance
 
@@ -301,8 +317,8 @@ Planned additions: the relation to use (by name) and the reciprocity mode.
 *Implemented in v0.4 for kinds, relations, signals, models and serving, in
 v0.5 for attributes, serving filters and privacy, in v0.6 for matching and
 shared relations; every later version extends the schema. Sections of
-later versions (segments) are rejected with the version that introduces
-them.*
+later versions are rejected with the version that introduces them;
+v0.7 adds segments.*
 
 The modeling of an application lives in one configuration file. JSON,
 because recoant uses the standard library only; the schema is versioned and
@@ -367,7 +383,7 @@ in v0.4):
 
 ### Example: dating
 
-The target configuration; `segments` arrives with v0.7. The part that
+The target configuration; it works as shown from v0.7. The part that
 works in v0.6 — attributes, reciprocal matching, mutual age preferences,
 distance filter and privacy — is in
 [examples/config/people.json](../examples/config/people.json).
@@ -414,7 +430,7 @@ distance filter and privacy — is in
     }
   },
   "segments": {
-    "user": {"features": ["taste", "appearance", "interests"], "k": 20}
+    "user": {"k": 20, "features": ["taste", "appearance", "interests"], "model": "attraction"}
   },
   "privacy": {"retention": {"likes": "365d"}, "delete_attributes_with_entity": true}
 }
@@ -432,7 +448,7 @@ configuration builds the same objects.
 | Latent factors | PureSVD/PCA (randomized SVD), Funk-SVD, biased MF, SVD++, ALS, BPR | v0.3 |
 | Reciprocal | reciprocal combination of two directions, exposure balancing | ✓ |
 | Collective | shared subject vectors across relations (ALS) | ✓ |
-| Segments | k-means, mini-batch k-means | v0.7 |
+| Segments | k-means, mini-batch k-means | ✓ |
 | Feature-based | factorization machines / LightFM-style with attributes (cold start) | v0.10 |
 | Graph | P3α, RP3β, personalized PageRank | v0.11 |
 | Session | session-kNN, sequential co-occurrence | v0.8 |
@@ -449,7 +465,7 @@ configuration builds the same objects.
 | `config` | Loading and validating the configuration, building the objects | ✓ |
 | `attr` | Attribute schemas, store and filters | ✓ |
 | `match` | Reciprocal recommendation and exposure balancing | ✓ |
-| `segment` | Clustering, segment and entity profiles | v0.7 |
+| `segment` | Clustering, segment and entity profiles | ✓ |
 | `stream` | Ingest, sessions, windows, online/incremental pipeline | v0.8 |
 | `funnel` | Funnel stages, rates, learned signal relevance | v0.9 |
 | `algo/…` | popularity, knn, svd, mf, als, bpr ✓; fm, graphwalk, session, hybrid planned | |
@@ -478,9 +494,9 @@ personal data even then. Therefore:
   last signal is older than the limit is dropped in all channels by
   `Expire`. This costs one timestamp per pair, only for relations with a
   retention.
-- Sensitive attributes can be excluded from models, so that e.g. clustering
-  does not group users by gender unless an application decides to (from
-  v0.7, when models use attributes).
+- Sensitive attributes are excluded from segments unless an application
+  sets `allow_sensitive`, so that clustering does not group users by gender
+  or age by accident; profiles leave them out too.
 
 ## Decisions
 

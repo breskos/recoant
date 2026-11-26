@@ -10,6 +10,7 @@ repeated.
 | --- | --- | --- | --- | --- | --- |
 | v0.5 | 2026-11-26 | v0.5.0 (measured on its feature branch; afterwards only tests and two behavior-preserving refactors changed) | `c8e105f` | Apple M1, 8 cores, 8 GB RAM, macOS, Go 1.27.4 | [2026-11-26](measurements/2026-11-26) |
 | v0.6 (matching only) | 2026-11-26 | v0.6.0 (measured on its feature branch; afterwards only requests in other directions were changed to pass through, which the measurement does not use) | `1b9a821` (merged into main as `d6f0eb4`) | same machine | [matching.txt](measurements/2026-11-26/matching.txt) |
+| v0.7 (segments only) | 2026-11-26 | v0.7 feature branch | `b43c387` (branch feat/segments) | same machine | [segments.txt](measurements/2026-11-26/segments.txt) |
 
 ## Summary
 
@@ -25,6 +26,10 @@ there.
 Reciprocal matching **doubles the expected matches** in a dating app
 (0.46 → 1.02 per 10 recommendations) and spreads attention over twice as
 many profiles.
+Segments on taste vectors recover hidden taste groups **exactly** (purity
+and adjusted Rand index 1.0). Where segments need behavior and attributes
+together, taste and age reach a purity of **0.91**, each alone 0.56–0.67;
+a feature without information drops it to 0.22.
 
 **Speed.** One 8-core machine serves **2,800 requests per second** from ALS
 or BPR (p99 under 2.5 ms) and **about 200,000 per second** from the
@@ -283,6 +288,62 @@ feature models (v0.10) are the next levers.
 covered by unit tests; no data set with two relations of the same users
 exists yet, so it is not measured here.
 
+### basic/taste-clusters — segments
+
+Program: [examples/segments](../examples/segments) — raw output
+[segments.txt](measurements/2026-11-26/segments.txt). 5,000 users belong to
+10 hidden taste clusters. ALS (32 factors) is trained on the first 80 % of
+the signals; the users are segmented on their taste vectors into 10
+segments and compared with the true clusters. **Purity** is the share of
+users who are in the majority cluster of their segment; the **adjusted
+Rand index** is 1 for identical groupings and 0 for random ones.
+
+| Segmentation | purity | adjusted Rand | fit time (5,000 users) |
+| --- | --- | --- | --- |
+| k-means, 10 restarts (default) | **1.000** | **1.000** | 0.27 s |
+| mini-batch k-means (batch 256), 10 restarts | 0.900 | 0.883 | 0.33 s |
+
+**Verdict: segments find the real groups.** k-means on taste vectors
+recovers the hidden clusters exactly: every segment is one cluster, and
+its typical items all belong to that cluster. With a single run instead of
+10 restarts, k-means merged two clusters and split another (purity 0.90),
+a typical local minimum; that is why 10 restarts are the default. Mini-batch
+k-means also merged two clusters here; it pays off only for data too large
+for full passes, and is no faster at 5,000 users.
+
+**Per segment.** The hit rate@10 of ALS is between 0.50 and 0.59 in every
+segment: no group of users is served badly. `evaluation.BySegment` makes
+such gaps visible on real data, where they are common (new users, niche
+tastes).
+
+### segments/customers — which features make segments
+
+Same program and raw output. 4,000 customers of a shop in 6 hidden
+segments: students (18–25) and techies (30–45) buy games and electronics,
+families (30–45) and retirees (62–80) garden and household, outdoor people
+(25–55) sport and books, gourmets (35–65) kitchen and books. Customers also
+have a city (no influence) and a membership (premium share 5–50 % by
+segment). ALS (16 factors) on all signals; 6 segments on different
+features.
+
+| Features | purity | adjusted Rand |
+| --- | --- | --- |
+| taste | 0.674 | 0.594 |
+| age | 0.563 | 0.347 |
+| taste + city | 0.222 | 0.023 |
+| **taste + age** | **0.911** | **0.845** |
+| taste + age + membership (weight 0.5) | 0.908 | 0.833 |
+
+**Verdict: combine behavior and attributes, and leave out what carries no
+information.** Taste alone merges the pairs that buy the same categories;
+age alone merges the segments whose ages overlap; together they find the
+real segments, and the profiles name them correctly (age 18–27 with 96 %
+basic membership: students; 62–80: retirees). One feature without
+information — the city — destroys the segments (purity 0.22), because it
+counts as much as taste. Membership adds nothing beyond taste and age here.
+In production: start with taste, add attributes one at a time, and keep
+only those that raise the separation of segments you can name.
+
 ## Performance
 
 Program: [examples/benchmark](../examples/benchmark) — raw output
@@ -380,6 +441,10 @@ go run ./examples/attributes -data ../recoant-data/synthetic
 
 ```bash
 go run ./examples/matching -data ../recoant-data/synthetic
+```
+
+```bash
+go run ./examples/segments -data ../recoant-data/synthetic
 ```
 
 ```bash

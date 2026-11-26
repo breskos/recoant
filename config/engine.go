@@ -10,6 +10,7 @@ import (
 	"github.com/breskos/recoant/algo/popularity"
 	"github.com/breskos/recoant/attr"
 	"github.com/breskos/recoant/match"
+	"github.com/breskos/recoant/segment"
 	"github.com/breskos/recoant/store"
 )
 
@@ -48,6 +49,8 @@ type Engine struct {
 	names  []string
 	// matchers wrap the models of reciprocal relations, by model name.
 	matchers map[string]*match.Reciprocal
+	// segmenters segment the kinds with a segments section, by kind.
+	segmenters map[string]*segment.Segmenter
 }
 
 // Build creates the store and all models.
@@ -76,6 +79,9 @@ func (c *Config) Build() (*Engine, error) {
 		e.models[name] = m
 	}
 	if err := e.buildMatchers(); err != nil {
+		return nil, err
+	}
+	if err := e.buildSegmenters(); err != nil {
 		return nil, err
 	}
 	return e, nil
@@ -204,7 +210,10 @@ func (e *Engine) Fit(ctx context.Context) error {
 			return fmt.Errorf("model %s: %w", name, err)
 		}
 	}
-	return e.fitMatchers(ctx)
+	if err := e.fitMatchers(ctx); err != nil {
+		return err
+	}
+	return e.fitSegments(ctx)
 }
 
 // fitMatchers counts the exposure of reciprocal relations.
@@ -234,7 +243,10 @@ func (e *Engine) Refresh(ctx context.Context) error {
 			return fmt.Errorf("model %s: %w", name, err)
 		}
 	}
-	return e.fitMatchers(ctx)
+	if err := e.fitMatchers(ctx); err != nil {
+		return err
+	}
+	return e.fitSegments(ctx)
 }
 
 // noData reports errors of models without data yet.

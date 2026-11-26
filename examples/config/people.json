@@ -42,6 +42,9 @@
       ]
     }
   },
+  "segments": {
+    "user": {"k": 8, "features": ["taste", "appearance", "interests"], "model": "attraction", "seed": 1}
+  },
   "privacy": {
     "retention": {"likes": "365d"},
     "delete_attributes_with_entity": true

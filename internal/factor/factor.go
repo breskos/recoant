@@ -112,3 +112,26 @@ func Interest(v View, subjects []recoant.Ref, object recoant.Ref) []float64 {
 	}
 	return out
 }
+
+// Taste returns a copy of the trained subject vector of ref; false for
+// other kinds and subjects without a vector.
+func Taste(v View, ref recoant.Ref) ([]float64, bool) {
+	return row(v.Store, v.Users, v.Rel.Subject, ref)
+}
+
+// Appearance returns a copy of the object vector of ref; false for other
+// kinds and objects without a vector.
+func Appearance(v View, ref recoant.Ref) ([]float64, bool) {
+	return row(v.Store, v.Items, v.Rel.Object, ref)
+}
+
+func row(s *store.Store, m *embed.Matrix, kind recoant.Kind, ref recoant.Ref) ([]float64, bool) {
+	if m == nil || ref.Kind != kind {
+		return nil, false
+	}
+	i, ok := s.Index(ref)
+	if !ok || int(i) >= m.N {
+		return nil, false
+	}
+	return append([]float64(nil), m.Row(int(i))...), true
+}
