@@ -9,7 +9,7 @@ repeated.
 | Run | Date | recoant | recoant-data | Machine | Raw output |
 | --- | --- | --- | --- | --- | --- |
 | v0.5 | 2026-11-26 | v0.5.0 (measured on its feature branch; afterwards only tests and two behavior-preserving refactors changed) | `c8e105f` | Apple M1, 8 cores, 8 GB RAM, macOS, Go 1.27.4 | [2026-11-26](measurements/2026-11-26) |
-| v0.6 (matching only) | 2026-11-26 | v0.6 feature branch | `1b9a821` (branch feat/matching) | same machine | [matching.txt](measurements/2026-11-26/matching.txt) |
+| v0.6 (matching only) | 2026-11-26 | v0.6.0 (measured on its feature branch; afterwards only requests in other directions were changed to pass through, which the measurement does not use) | `1b9a821` (merged into main as `d6f0eb4`) | same machine | [matching.txt](measurements/2026-11-26/matching.txt) |
 
 ## Summary
 
