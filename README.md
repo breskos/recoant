@@ -14,7 +14,7 @@ A recommendation framework in Go: from streams of user signals to recommendation
 - Many algorithms behind one interface: popularity, neighborhood models, SVD/PCA, matrix factorization (Funk-SVD, SVD++), ALS, BPR, graph walks and hybrids
 - Ranking metrics with temporal splits and prequential evaluation for streams
 
-> **Status:** early design. See the [architecture draft](docs/architecture.md) and the [roadmap](ROADMAP.md).
+> **Status:** in development. Implemented: signals, store, popularity, kNN and latent factor models. Next: negative feedback and star ratings, configuration, attributes, reciprocal user-to-user matching and segments. See the [architecture](docs/architecture.md) and the [roadmap](ROADMAP.md).
 
 ## Install
 
