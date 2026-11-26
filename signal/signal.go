@@ -214,6 +214,10 @@ type RelationSpec struct {
 	HalfLife time.Duration `json:"half_life,omitempty"`
 	// Channels overrides the model's channel settings for this relation.
 	Channels map[string]Channel `json:"channels,omitempty"`
+	// Retention is how long a pair of the relation is kept after its last
+	// signal; the store's Expire drops older pairs. Zero keeps them
+	// forever.
+	Retention time.Duration `json:"retention,omitempty"`
 }
 
 // Model turns signals into interaction strength.
@@ -284,6 +288,9 @@ func (m Model) Validate() error {
 		}
 		if k.HalfLife < 0 {
 			return fmt.Errorf("%w: relation %q has a negative half-life", ErrInvalidModel, name)
+		}
+		if k.Retention < 0 {
+			return fmt.Errorf("%w: relation %q has a negative retention", ErrInvalidModel, name)
 		}
 		for ch, c := range k.Channels {
 			if err := c.validate(); err != nil {

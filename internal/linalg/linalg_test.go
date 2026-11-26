@@ -136,3 +136,13 @@ func TestMulRows(t *testing.T) {
 		t.Error("Parallel(0)")
 	}
 }
+
+// Off-diagonal zeros are skipped by the rotations.
+func TestSymEigenBlock(t *testing.T) {
+	a := NewDense(3, 3)
+	copy(a.Data, []float64{2, 1, 0, 1, 2, 0, 0, 0, 5})
+	vals, _ := SymEigen(a)
+	if !near(vals[0], 5, 1e-12) || !near(vals[1], 3, 1e-12) || !near(vals[2], 1, 1e-12) {
+		t.Errorf("eigenvalues %v, want 5 3 1", vals)
+	}
+}

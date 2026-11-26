@@ -98,3 +98,38 @@ func TestRejected(t *testing.T) {
 	}
 	testfix.CheckRejected(t, m)
 }
+
+// Cancellation at every check of Fit and Refresh returns context.Canceled.
+func TestCancelEverywhere(t *testing.T) {
+	testfix.CheckCancel(t, func(c context.Context) error {
+		m, _ := als.New(testfix.Store(t, testfix.Groups), als.Config{Relation: testfix.Rel, Factors: 2, Iterations: 2, Seed: 1, Workers: 1})
+		return m.Fit(c)
+	})
+	testfix.CheckCancel(t, func(c context.Context) error {
+		s := testfix.Store(t, testfix.Groups)
+		m, _ := als.New(s, als.Config{Relation: testfix.Rel, Factors: 2, Iterations: 2, Seed: 1, Workers: 1})
+		if err := m.Fit(ctx); err != nil {
+			t.Fatal(err)
+		}
+		_ = s.Add(testfix.Sig("u1", "c", recoant.Click, 1))
+		return m.Refresh(c)
+	})
+}
+
+// A history with objects newer than the model folds in without them, and a
+// subject without history in the relation gets nothing.
+func TestFoldInEdgeCases(t *testing.T) {
+	s := testfix.Store(t, testfix.Groups)
+	m, _ := als.New(s, als.Config{Relation: testfix.Rel, Factors: 4, Seed: 1})
+	if err := m.Fit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	_ = s.Add(testfix.Sig("u1", "brand-new", recoant.Purchase, 1))
+	if res, err := m.Recommend(ctx, recoant.Request{Subject: recoant.U("u1"), Target: "product", K: 2, ExcludeSeen: true}); err != nil || len(res) == 0 {
+		t.Errorf("fold-in with a new object: %v %v", res, err)
+	}
+	_ = s.Add(recoant.Signal{Subject: recoant.U("cinephile"), Object: recoant.Ref{Kind: "movie", ID: "m"}, Type: recoant.Click, Value: 1, Time: testfix.T0})
+	if res, err := m.Recommend(ctx, recoant.Request{Subject: recoant.U("cinephile"), Target: "product", K: 2}); err != nil || res != nil {
+		t.Errorf("subject without history: %v %v", res, err)
+	}
+}

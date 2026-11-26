@@ -146,13 +146,11 @@ func Save(path string, f Format, kind string, v any) (err error) {
 	if err = Encode(bw, f, kind, v); err != nil {
 		return err
 	}
-	if err = bw.Flush(); err != nil {
-		return err
+	err = errors.Join(bw.Flush(), tmp.Close())
+	if err == nil {
+		err = os.Rename(tmp.Name(), path)
 	}
-	if err = tmp.Close(); err != nil {
-		return err
-	}
-	return os.Rename(tmp.Name(), path)
+	return err
 }
 
 // Load reads content of the given kind from path into v.

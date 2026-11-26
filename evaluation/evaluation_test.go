@@ -183,3 +183,12 @@ func TestEvaluatePopularity(t *testing.T) {
 		t.Errorf("WriteTo: %q %v", buf.String(), err)
 	}
 }
+
+// Objects with the same last time are held out in ID order.
+func TestLeaveLastOutTies(t *testing.T) {
+	sigs := []recoant.Signal{sig("u1", "b", recoant.Visit, 1), sig("u1", "a", recoant.Visit, 1), sig("u1", "c", recoant.Visit, 0)}
+	_, test := evaluation.LeaveLastOut(sigs, 1)
+	if len(test) != 1 || test[0].Object != p("a") {
+		t.Errorf("test = %v", test)
+	}
+}

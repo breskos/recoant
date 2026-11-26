@@ -214,3 +214,17 @@ func TestRatingChannel(t *testing.T) {
 		t.Errorf("unknown channel: %v", err)
 	}
 }
+
+// A deleted user leaves an empty row; training skips it.
+func TestEmptyRow(t *testing.T) {
+	train, _ := ratings()
+	s := ratingStore(t, train)
+	s.Delete(recoant.U("r0"))
+	m, _ := mf.New(s, mf.Config{Relation: testfix.Rel, Variant: mf.SVDPlusPlus, Factors: 2, Epochs: 3, Seed: 1})
+	if err := m.Fit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := m.Predict(recoant.U("r1"), testfix.P("g0")); !ok {
+		t.Error("Predict after a deleted user")
+	}
+}

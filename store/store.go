@@ -91,6 +91,11 @@ func (c *channel) value(i uint32, k int, f float64) float64 {
 type relation struct {
 	channels map[string]*channel
 	names    []string // sorted channel names
+	// retention is how long a pair is kept after its last signal; stamps
+	// holds, if retention is set, the time of the last signal per pair in
+	// seconds since the Unix epoch, by subject index, sorted by column.
+	retention time.Duration
+	stamps    [][]stamp
 	// subjSeq and objSeq hold the store's change counter at the last
 	// change of each subject's row and object's column.
 	subjSeq, objSeq []uint64
@@ -111,11 +116,32 @@ func grow(rows [][]sparse.Entry, i uint32) [][]sparse.Entry {
 	return rows
 }
 
+// stamp is the time of the last signal of a pair.
+type stamp struct {
+	Col uint32
+	T   uint32 // seconds since the Unix epoch
+}
+
+func unixStamp(t time.Time) uint32 {
+	return uint32(min(max(t.Unix(), 0), 1<<32-1))
+}
+
+// setStamp records t for col in row, keeping the later time.
+func setStamp(row []stamp, col, t uint32) []stamp {
+	k, ok := slices.BinarySearchFunc(row, col, func(e stamp, c uint32) int { return cmp.Compare(e.Col, c) })
+	if ok {
+		row[k].T = max(row[k].T, t)
+		return row
+	}
+	return slices.Insert(row, k, stamp{Col: col, T: t})
+}
+
 // Store holds relations between subjects and objects. Create it with [New].
 type Store struct {
 	mu      sync.RWMutex
 	model   signal.Model
 	dicts   map[recoant.Kind]*dict.Dictionary
+	dead    map[recoant.Kind][]uint64 // bitsets of deleted indexes
 	rels    map[Relation]*relation
 	latest  time.Time
 	signals int64
@@ -131,6 +157,7 @@ func New(m signal.Model) (*Store, error) {
 	return &Store{
 		model: m,
 		dicts: make(map[recoant.Kind]*dict.Dictionary),
+		dead:  make(map[recoant.Kind][]uint64),
 		rels:  make(map[Relation]*relation),
 	}, nil
 }
@@ -208,7 +235,7 @@ func (s *Store) add(sig recoant.Signal) {
 	key := Relation{Name: name, Subject: sig.Subject.Kind, Object: sig.Object.Kind}
 	rel := s.rels[key]
 	if rel == nil {
-		rel = &relation{channels: make(map[string]*channel)}
+		rel = s.newRelation(name)
 		s.rels[key] = rel
 	}
 	ch := rel.channels[chName]
@@ -240,9 +267,24 @@ func (s *Store) add(sig recoant.Signal) {
 		ch.rows[si] = sparse.Add(ch.rows[si], oi, stored)
 	}
 	ch.nnz += len(ch.rows[si]) - before
+	if rel.retention > 0 {
+		rel.stamps = growStamps(rel.stamps, si)
+		rel.stamps[si] = setStamp(rel.stamps[si], oi, unixStamp(sig.Time))
+	}
 	s.seq++
 	rel.subjSeq = setSeq(rel.subjSeq, si, s.seq)
 	rel.objSeq = setSeq(rel.objSeq, oi, s.seq)
+}
+
+func (s *Store) newRelation(name string) *relation {
+	return &relation{channels: make(map[string]*channel), retention: s.model.Relations[name].Retention}
+}
+
+func growStamps(rows [][]stamp, i uint32) [][]stamp {
+	if int(i) >= len(rows) {
+		rows = append(rows, make([][]stamp, int(i)+1-len(rows))...)
+	}
+	return rows
 }
 
 func (c *channel) rebase(t time.Time) {
@@ -508,6 +550,33 @@ func (s *Store) Interactions(subject recoant.Ref, object recoant.Kind, now time.
 	return out
 }
 
+// History returns the objects of a kind the subject has interacted with,
+// in any relation between their kinds, as a map from object ID to whether
+// the subject rejected it (see [Store.Rejected]). It answers [Store.Has]
+// and [Store.Rejected] for all objects of a subject at once.
+func (s *Store) History(subject recoant.Ref, object recoant.Kind) map[string]bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	si, ok := s.index(subject)
+	if !ok {
+		return nil
+	}
+	sums := make(map[uint32]float64)
+	for key, r := range s.rels {
+		if key.Subject == subject.Kind && key.Object == object {
+			for _, e := range s.prefRow(r, si, s.latest) {
+				sums[e.Col] += float64(e.Val)
+			}
+		}
+	}
+	d := s.dicts[object]
+	out := make(map[string]bool, len(sums))
+	for j, v := range sums {
+		out[d.ID(j)] = v < 0
+	}
+	return out
+}
+
 // Index returns the dense index of a reference.
 func (s *Store) Index(ref recoant.Ref) (uint32, bool) {
 	s.mu.RLock()
@@ -528,13 +597,14 @@ func (s *Store) Ref(kind recoant.Kind, i uint32) (recoant.Ref, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	d := s.dicts[kind]
-	if d == nil || int(i) >= d.Len() {
+	if d == nil || int(i) >= d.Len() || d.Deleted(i) {
 		return recoant.Ref{}, false
 	}
 	return recoant.Ref{Kind: kind, ID: d.ID(i)}, true
 }
 
-// Len returns the number of known references of a kind.
+// Len returns the number of dense indexes of a kind, including those of
+// deleted references.
 func (s *Store) Len(kind recoant.Kind) int {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

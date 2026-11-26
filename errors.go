@@ -12,4 +12,8 @@ var (
 	// ErrUnsupported is returned for a request direction a recommender
 	// cannot answer, e.g. user-to-user from an item-based model.
 	ErrUnsupported = errors.New("recoant: unsupported request direction")
+	// ErrUnfiltered is returned by recommenders for a request with
+	// attribute conditions that no attribute store evaluated; see
+	// [Request.Where].
+	ErrUnfiltered = errors.New("recoant: attribute conditions need an attribute store (attr.Filtered)")
 )

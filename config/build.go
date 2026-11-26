@@ -29,6 +29,9 @@ func (c *Config) SignalModel() (signal.Model, error) {
 			Subject: recoant.Kind(r.Subject), Object: recoant.Kind(r.Object),
 			HalfLife: time.Duration(r.HalfLife),
 		}
+		if c.Privacy != nil {
+			spec.Retention = time.Duration(c.Privacy.Retention[name])
+		}
 		if len(r.Channels) > 0 {
 			spec.Channels = make(map[string]signal.Channel, len(r.Channels))
 			for ch, cc := range r.Channels {

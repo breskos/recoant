@@ -1,0 +1,12 @@
+Apple M1, 8 CPUs, darwin/arm64, go1.27.4
+
+loaded 3499222 signals in 2.054s (CSV parsing, not part of recoant)
+ingest: 3497222 signals in 1.368s = 2.56 million signals/s; 200000 users, 49928 items, 1477560 interactions; store heap 34 MB (23 bytes per interaction)
+
+       model  parameters    fit  model heap   refresh (2000 new)      p50      p95      p99  throughput (8 CPUs)
+  popularity    all-time  440ms        3 MB  online (per signal)  0.92 ms  0.98 ms  1.02 ms           5209 req/s
+  item-knn  cosine, 50 neighbors, shrink 10  170ms  18 MB  130ms  0.03 ms  0.03 ms  0.03 ms  194608 req/s
+  user-knn  cosine, 50 neighbors, shrink 10, max degree 1000  4.41s  101 MB  170ms  0.02 ms  0.03 ms  0.03 ms  217708 req/s
+  pure-svd  64 factors  7.78s  156 MB  full fit  3.09 ms  3.20 ms  3.40 ms  1648 req/s
+  als  32 factors, 10 iterations  8.22s  66 MB  160ms  1.77 ms  1.82 ms  1.84 ms  2807 req/s
+  bpr  32 factors, 30 epochs  19.37s  66 MB  full fit  1.79 ms  1.88 ms  2.48 ms  2774 req/s

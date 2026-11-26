@@ -2,6 +2,7 @@ package persist
 
 import (
 	"github.com/breskos/recoant/algo/popularity"
+	"github.com/breskos/recoant/attr"
 	"github.com/breskos/recoant/signal"
 	"github.com/breskos/recoant/store"
 )
@@ -11,6 +12,7 @@ const (
 	KindStore       = "store"
 	KindSignalModel = "signal-model"
 	KindPopularity  = "popularity"
+	KindAttributes  = "attributes"
 )
 
 // SaveStore writes a store to path.
@@ -53,4 +55,19 @@ func LoadPopularity(path string) (*popularity.Popularity, error) {
 		return nil, err
 	}
 	return popularity.FromSnapshot(&sn)
+}
+
+// SaveAttributes writes an attribute store to path, including sensitive
+// attributes.
+func SaveAttributes(path string, f Format, s *attr.Store) error {
+	return Save(path, f, KindAttributes, s.Snapshot())
+}
+
+// LoadAttributes reads an attribute store from path.
+func LoadAttributes(path string) (*attr.Store, error) {
+	var sn attr.Snapshot
+	if _, err := Load(path, KindAttributes, &sn); err != nil {
+		return nil, err
+	}
+	return attr.FromSnapshot(&sn)
 }

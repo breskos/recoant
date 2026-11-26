@@ -89,3 +89,17 @@ func TestWeightAndStrength(t *testing.T) {
 		t.Error("zero half-life must disable decay")
 	}
 }
+
+func TestRuleForAndNeutral(t *testing.T) {
+	m := signal.DefaultModel()
+	if r, ok := m.RuleFor(recoant.Purchase); !ok || r.Weight != 10 {
+		t.Errorf("RuleFor(purchase) = %v %v", r, ok)
+	}
+	if _, ok := m.RuleFor("share"); ok {
+		t.Error("RuleFor of an ignored type")
+	}
+	bad := signal.Rule{Weight: 1, Feedback: signal.Rating, Neutral: math.Inf(1)}
+	if err := bad.Validate(); !errors.Is(err, signal.ErrInvalidModel) {
+		t.Errorf("infinite neutral: %v", err)
+	}
+}

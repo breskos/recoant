@@ -129,3 +129,16 @@ func TestRejected(t *testing.T) {
 	}
 	testfix.CheckRejected(t, m)
 }
+
+// A subject without history in the relation gets nothing.
+func TestNoHistory(t *testing.T) {
+	s := testfix.Store(t, testfix.Groups)
+	_ = s.Add(recoant.Signal{Subject: recoant.U("cinephile"), Object: recoant.Ref{Kind: "movie", ID: "m"}, Type: recoant.Click, Value: 1, Time: testfix.T0})
+	m, _ := svd.New(s, svd.Config{Relation: testfix.Rel, Factors: 2, Seed: 1})
+	if err := m.Fit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if res, err := m.Recommend(ctx, recoant.Request{Subject: recoant.U("cinephile"), Target: "product", K: 2}); err != nil || res != nil {
+		t.Errorf("subject without history: %v %v", res, err)
+	}
+}

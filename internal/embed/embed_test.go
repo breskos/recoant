@@ -39,3 +39,12 @@ func TestMatrix(t *testing.T) {
 		t.Errorf("Grow: %+v", r)
 	}
 }
+
+func TestScoreAdmit(t *testing.T) {
+	m := &Matrix{N: 2, K: 1, Data: []float64{1, 2}}
+	tk := topk.New(2)
+	m.Score([]float64{1}, nil, func(j uint32) bool { return j == 0 }, tk)
+	if got := tk.Sorted(); len(got) != 1 || got[0].Index != 0 {
+		t.Errorf("Score with admit = %v", got)
+	}
+}
