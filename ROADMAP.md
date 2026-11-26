@@ -14,7 +14,7 @@ Until v1.0.0 minor versions may change the API; every breaking change is listed 
 | v0.2.0 | Neighborhood models and user-to-user | released |
 | v0.3.0 | Latent factors: SVD/PCA, MF, SVD++, ALS, BPR | released |
 | v0.4.0 | Signals 2.0 and configuration | released |
-| v0.5.0 | Attributes | planned |
+| v0.5.0 | Attributes | in review |
 | v0.6.0 | User-to-user: roles and reciprocal matching | planned |
 | v0.7.0 | Segments and profiles | planned |
 | v0.8.0 | Streaming: online and incremental learning | planned |
@@ -66,6 +66,8 @@ Every version from v0.4 on extends the [configuration](docs/architecture.md#conf
 - Attribute store fed by events (set, update, delete), dense columns
 - Attribute filters as data in requests and configuration: equality, ranges, set overlap, distance; mutual filters for matching
 - Entity deletion removes attributes, signals and vectors; retention per relation
+- `privacy` section in the configuration: retention, deletion of attributes with the entity, export of sensitive attributes
+- Test sets with attributes in recoant-data (people discovery, shop) and an end-to-end check
 
 ## v0.6.0 — User-to-user: roles and reciprocal matching
 

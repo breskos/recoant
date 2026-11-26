@@ -10,11 +10,22 @@ A recommendation framework in Go: from streams of user signals to recommendation
 - User to entity, entity to entity and user to user recommendations
 - Signals with depth: visits, clicks, dwell time, purchases and your own types, with weights, value transforms and time decay
 - Funnel modeling and learned signal relevance
+- Attributes (category, number, set, geo) with filters as data: ranges, distance, and mutual preferences for matching
+- Privacy: sensitive attributes, deletion of users and entities, retention per relation
 - Relations between users and entities as a typed graph
 - Many algorithms behind one interface: popularity, neighborhood models, SVD/PCA, matrix factorization (Funk-SVD, SVD++), ALS, BPR, graph walks and hybrids
 - Ranking metrics with temporal splits and prequential evaluation for streams
 
-> **Status:** in development. Implemented: signals with implicit, rating and negative feedback, named relations, configuration, popularity, kNN and latent factor models. Next: attributes, reciprocal user-to-user matching and segments. See the [architecture](docs/architecture.md) and the [roadmap](ROADMAP.md).
+> **Status:** in development. Implemented: signals with implicit, rating and negative feedback, named relations, configuration, popularity, kNN and latent factor models, attributes with filters (including mutual ones), deletion and retention. Next: reciprocal user-to-user matching and segments. See the [architecture](docs/architecture.md), the [measurements](docs/measurements.md) and the [roadmap](ROADMAP.md).
+
+## Quality and speed
+
+Measured on the synthetic data sets of [recoant-data](https://github.com/breskos/recoant-data) on one 8-core machine (details and meaning in [docs/measurements.md](docs/measurements.md)):
+
+- On users with clear tastes, BPR and ALS reach 94 % and 89 % of the best possible precision (an oracle that knows the hidden structure); on latent-factor data ALS reaches 64 %.
+- Attribute filters double the hit rate in people discovery (5.0 % → 12.2 %).
+- 200,000 users and 50,000 items: ALS trains in 8 s, refreshes after 2,000 new signals in 0.16 s and serves 2,800 requests/s (p99 1.8 ms); kNN serves about 200,000 requests/s.
+- The store needs about 20 bytes per interaction: 40 million in 0.73 GB.
 
 ## Install
 
@@ -32,6 +43,7 @@ Requires Go 1.24 or newer.
 | [`signal`](signal) | Signal model: implicit, rating and negative feedback, weights, transforms, channels, half-life |
 | [`store`](store) | Incremental, time-decayed interaction store for millions of users and entities |
 | [`sparse`](sparse) | Sparse matrices (CSR) for algorithms |
+| [`attr`](attr) | Attribute schemas, an event-fed attribute store and filters as data, including mutual filters for matching |
 | [`config`](config) | Model an application in a JSON configuration: kinds, relations, signals, models, serving |
 | [`algo/popularity`](algo/popularity) | Popularity and trending, online |
 | [`algo/knn`](algo/knn) | Item-kNN and user-kNN, incremental refresh; similar items and user-to-user |
@@ -40,7 +52,7 @@ Requires Go 1.24 or newer.
 | [`algo/als`](algo/als) | Alternating least squares for implicit feedback |
 | [`algo/bpr`](algo/bpr) | Bayesian personalized ranking |
 | [`evaluation`](evaluation) | Precision, recall, NDCG, MAP, hit rate, MRR, coverage; temporal and leave-last-out splits |
-| [`persist`](persist) | Save and load in JSON or binary |
+| [`persist`](persist) | Save and load stores, attributes and models in JSON or binary |
 
 More packages follow the [roadmap](ROADMAP.md).
 
@@ -63,6 +75,15 @@ _ = engine.Add(recoant.Signal{
 })
 _ = engine.Fit(ctx)
 recs, err := engine.Recommend(ctx, "for_you", recoant.U("8f3a…"), 10)
+```
+
+Attributes arrive as events and restrict candidates with filters from the configuration or per request:
+
+```go
+_ = engine.Apply(attr.Event{Ref: recoant.Ref{Kind: "product", ID: "p-17"}, Attribute: "price", Value: attr.Num(49)})
+max := 50.0
+recs, err = engine.Recommend(ctx, "for_you", recoant.U("8f3a…"), 10,
+	recoant.Condition{Attribute: "price", Max: &max})
 ```
 
 ## Quickstart

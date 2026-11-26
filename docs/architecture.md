@@ -1,6 +1,6 @@
 # Architecture
 
-*State: draft. Implemented: core types, signal model, store, popularity, evaluation and persistence (v0.1), neighborhood models (v0.2), latent factor models (v0.3), signals 2.0 and the configuration (v0.4). Roles and matching, attributes and segments are the design for the next versions; see the [roadmap](../ROADMAP.md).*
+*State: draft. Implemented: core types, signal model, store, popularity, evaluation and persistence (v0.1), neighborhood models (v0.2), latent factor models (v0.3), signals 2.0 and the configuration (v0.4), attributes, filters, deletion and retention (v0.5). Roles and matching and segments are the design for the next versions; see the [roadmap](../ROADMAP.md).*
 
 recoant is a framework for recommendation engines in Go. It takes a stream of
 signals between anonymized users and entities — visits, clicks, dwell time,
@@ -183,7 +183,8 @@ matching), geometric mean, minimum or product. Further settings:
 
 ## Attributes
 
-*Planned for v0.5.*
+*Implemented in v0.5 (package `attr`); cold start, profiles and clustering
+use attributes from v0.7 and v0.10.*
 
 Every kind has a declared attribute schema:
 
@@ -196,6 +197,28 @@ Every kind has a declared attribute schema:
 
 Attributes are written as events like signals (set, update, delete per
 entity) and kept in an attribute store with dense columns per attribute.
+
+### Filters
+
+Filters are data (`recoant.Condition`), so they come from the
+configuration, from a request in Go or, later, from an HTTP request.
+`attr.Filtered` wraps any recommender and turns the conditions of
+`Request.Where` into its `Filter`; a recommender that receives conditions
+nobody evaluated returns `ErrUnfiltered` instead of ignoring them.
+
+| Test | Example | Meaning |
+| --- | --- | --- |
+| `in` | `{"attribute": "brand", "in": ["acme"]}` | category is one of, or set overlaps |
+| `min`/`max` | `{"attribute": "price", "max": 50}` | number in range (inclusive) |
+| `max_distance_km` | `{"attribute": "location", "max_distance_km": 50}` | distance to the subject's location, or to `near: [lat, lon]` |
+| `within` | `{"attribute": "age", "within": ["min_age", "max_age"]}` | number between two attributes of the subject |
+| `within` + `mutual` | `{…, "mutual": true}` | and the subject's value between the candidate's two attributes: both sides' preferences are met |
+| `same` | `{"attribute": "interests", "same": true}` | category equal to, or set overlapping, the subject's |
+
+A candidate without the attribute fails a condition. A condition that
+refers to attributes the subject does not have is skipped, and the mutual
+direction is skipped for a candidate without preferences: missing
+preferences mean "no restriction", missing facts mean "no match".
 
 Uses:
 
@@ -242,13 +265,12 @@ type Request struct {
 	Exclude     []Ref
 	ExcludeSeen bool
 	Filter      func(Ref) bool
+	Where       []Condition // attribute filters as data, since v0.5
 	Time        time.Time
 }
 ```
 
-Planned additions: the relation to use (by name), attribute filters as data
-(so they can come from configuration or an HTTP request), and the
-reciprocity mode.
+Planned additions: the relation to use (by name) and the reciprocity mode.
 
 | Subject | Target | Example |
 | --- | --- | --- |
@@ -259,10 +281,10 @@ reciprocity mode.
 
 ## Configuration
 
-*Implemented in v0.4 for kinds, relations, signals, models and serving;
-every later version extends the schema. Sections of later versions
-(matching, segments, privacy, serving filters) are rejected with the version
-that introduces them.*
+*Implemented in v0.4 for kinds, relations, signals, models and serving, in
+v0.5 for attributes, serving filters and privacy; every later version
+extends the schema. Sections of later versions (matching, segments) are
+rejected with the version that introduces them.*
 
 The modeling of an application lives in one configuration file. JSON,
 because recoant uses the standard library only; the schema is versioned and
@@ -277,7 +299,7 @@ validated on load with error messages that point to the offending field.
 | `matching` | one-way or reciprocal per relation, combination, minimums, exposure balancing |
 | `serving` | defaults per request type: exclude seen, exclude rejected, filters, fallback model |
 | `segments` | clustering: which kind, features, number of segments |
-| `privacy` | retention and handling of sensitive attributes |
+| `privacy` | retention per relation, deletion of attributes with the entity, export of sensitive attributes |
 
 ### Example: shop
 
@@ -327,8 +349,9 @@ in v0.4):
 
 ### Example: dating
 
-The target configuration; `matching`, `segments`, `privacy` and serving
-`filters` arrive with v0.5–v0.7. The part that works in v0.4 is in
+The target configuration; `matching` and `segments` arrive with v0.6 and
+v0.7. The part that works in v0.5 — attributes, mutual age preferences,
+distance filter and privacy — is in
 [examples/config/people.json](../examples/config/people.json).
 
 ```json
@@ -338,6 +361,8 @@ The target configuration; `matching`, `segments`, `privacy` and serving
     "user": {
       "attributes": {
         "age":       {"type": "number", "sensitive": true},
+        "min_age":   {"type": "number"},
+        "max_age":   {"type": "number"},
         "gender":    {"type": "category", "sensitive": true},
         "location":  {"type": "geo", "sensitive": true},
         "interests": {"type": "set"}
@@ -365,7 +390,7 @@ The target configuration; `matching`, `segments`, `privacy` and serving
     "matches": {
       "model": "attraction", "target": "user", "exclude_seen": true, "exclude_rejected": true,
       "filters": [
-        {"attribute": "age", "within": "subject.preferred_age", "mutual": true},
+        {"attribute": "age", "within": ["min_age", "max_age"], "mutual": true},
         {"attribute": "location", "max_distance_km": 50}
       ]
     }
@@ -373,7 +398,7 @@ The target configuration; `matching`, `segments`, `privacy` and serving
   "segments": {
     "user": {"features": ["taste", "appearance", "interests"], "k": 20}
   },
-  "privacy": {"delete_attributes_with_entity": true}
+  "privacy": {"retention": {"likes": "365d"}, "delete_attributes_with_entity": true}
 }
 ```
 
@@ -404,7 +429,7 @@ configuration builds the same objects.
 | `store` | Channels per relation, ID dictionaries, change tracking | ✓ |
 | `sparse` | Sparse matrices | ✓ |
 | `config` | Loading and validating the configuration, building the objects | ✓ |
-| `attr` | Attribute schemas, store and filters | v0.5 |
+| `attr` | Attribute schemas, store and filters | ✓ |
 | `match` | Reciprocal recommendation and exposure balancing | v0.6 |
 | `segment` | Clustering, segment and entity profiles | v0.7 |
 | `stream` | Ingest, sessions, windows, online/incremental pipeline | v0.8 |
@@ -421,13 +446,23 @@ IDs arrive anonymized, but attributes such as age, gender or location are
 personal data even then. Therefore:
 
 - Attributes are declared in the schema; `sensitive` attributes are never
-  part of logs, explanations or exported profiles unless configured.
+  part of logs, explanations or exported profiles unless configured
+  (`privacy.export_sensitive`). Error messages never contain attribute
+  values. Snapshots hold them, since they are storage, not export.
 - Every attribute and every entity can be deleted; deleting an entity
-  removes its attributes, signals and vectors.
-- Retention can be configured per relation (signals older than a limit are
-  dropped).
+  removes its attributes, signals and vectors. Its dense index stays as a
+  tombstone so that model indexes remain valid, but its ID is forgotten;
+  the same ID later gets a new index. Signals and attributes are gone at
+  once; vectors of trained models are never recommended again and are
+  dropped at the next Fit or Refresh.
+- Retention can be configured per relation (`privacy.retention`). The store
+  aggregates signals per pair, so retention works per pair: a pair whose
+  last signal is older than the limit is dropped in all channels by
+  `Expire`. This costs one timestamp per pair, only for relations with a
+  retention.
 - Sensitive attributes can be excluded from models, so that e.g. clustering
-  does not group users by gender unless an application decides to.
+  does not group users by gender unless an application decides to (from
+  v0.7, when models use attributes).
 
 ## Decisions
 
@@ -444,6 +479,12 @@ personal data even then. Therefore:
 - **Feedback has a sign.** Ratings have a neutral point, negative signals are
   kept apart from positive ones, and rejected objects are not recommended by
   default.
+- **Filters are data, evaluated in one place.** Conditions live in the
+  request and the configuration; `attr.Filtered` evaluates them for every
+  recommender, which never ignore them silently. Missing preferences mean
+  no restriction, missing facts mean no match.
+- **Deletion keeps indexes stable.** Deleted references become tombstones;
+  the ID is forgotten, the index is not reused.
 - **Matching is configurable** per relation: one-way or reciprocal, with a
   configurable combination of both directions.
 - **Persistence format is selectable:** JSON or binary, detected on load.
